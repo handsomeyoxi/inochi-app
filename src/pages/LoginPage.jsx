@@ -29,11 +29,11 @@ export default function LoginPage({ onLogin }) {
 
     const users = JSON.parse(localStorage.getItem('inochi_users') || '[]');
     const found = users.find((u) => u.studentId === form.studentId);
-    if (found && found.password !== form.password) { setError('密碼錯誤，請重新輸入'); return; }
+    if (!found) { setError('帳號不存在，請先註冊'); return; }
+    if (found.password !== form.password) { setError('密碼錯誤'); return; }
 
-    const userData = found ?? { studentId: form.studentId, name: form.studentId, email: '' };
     setLoading(true);
-    setTimeout(() => { onLogin(userData); setLoading(false); }, 500);
+    setTimeout(() => { onLogin(found); setLoading(false); }, 500);
   };
 
   const handleRegister = () => {
