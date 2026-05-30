@@ -2,11 +2,11 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 const STORE_ACCOUNTS = [
-  { id: 1, username: 'sushi01', password: '1234', name: '濱海迴轉壽司', type: '壽司' },
-  { id: 2, username: 'drink01', password: '1234', name: '小Q飲料坊',    type: '飲料' },
-  { id: 3, username: 'bread01', password: '1234', name: '老師傅麵包坊', type: '麵包' },
-  { id: 4, username: 'lunch01', password: '1234', name: '阿嬤的便當',   type: '便當' },
-  { id: 5, username: 'oden01',  password: '1234', name: '熱呼呼關東煮', type: '關東煮' },
+  { id: 1, username: 'sushi01', password: 'inochi2025', name: '濱海迴轉壽司', type: '壽司' },
+  { id: 2, username: 'drink01', password: 'inochi2025', name: '小Q飲料坊',    type: '飲料' },
+  { id: 3, username: 'bread01', password: 'inochi2025', name: '老師傅麵包坊', type: '麵包' },
+  { id: 4, username: 'bento01', password: 'inochi2025', name: '阿嬤的便當',   type: '便當' },
+  { id: 5, username: 'oden01',  password: 'inochi2025', name: '熱呼呼關東煮', type: '關東煮' },
 ];
 
 const TYPE_EMOJI = { '壽司': '🍣', '飲料': '🧋', '麵包': '🍞', '便當': '🍱', '關東煮': '🍢' };
@@ -22,17 +22,16 @@ export default function StoreLoginPage({ onLogin }) {
   const handleLogin = () => {
     setError('');
     if (!form.username || !form.password) { setError('請填寫帳號和密碼'); return; }
-    const account = STORE_ACCOUNTS.find(
-      (a) => a.username === form.username && a.password === form.password
-    );
-    if (!account) { setError('帳號或密碼錯誤'); return; }
+    const matched = STORE_ACCOUNTS.find((a) => a.username === form.username);
+    if (!matched) { setError('無店家權限'); return; }
+    if (matched.password !== form.password) { setError('密碼錯誤'); return; }
     setLoading(true);
-    setTimeout(() => { onLogin(account); setLoading(false); }, 500);
+    setTimeout(() => { onLogin(matched); setLoading(false); }, 500);
   };
 
   const handleKey = (e) => { if (e.key === 'Enter') handleLogin(); };
 
-  const fillDemo = (a) => setForm({ username: a.username, password: '1234' });
+  const fillDemo = (a) => setForm({ username: a.username, password: '' });
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-700 via-slate-800 to-slate-900
@@ -90,7 +89,7 @@ export default function StoreLoginPage({ onLogin }) {
         {/* Demo credentials */}
         <div className="bg-gray-50 rounded-2xl p-3 mb-4">
           <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-2">
-            測試帳號（密碼均為 1234）
+            店家帳號（點擊自動填入）
           </p>
           <div className="space-y-1">
             {STORE_ACCOUNTS.map((a) => (
