@@ -19,9 +19,13 @@ export default function LoginPage({ onLogin }) {
   const [tab, setTab] = useState('login');
   const [form, setForm] = useState({ studentId: '', name: '', email: '', password: '', confirm: '' });
   const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
+  const set = (k) => (e) => {
+    setSuccess('');
+    setForm((f) => ({ ...f, [k]: e.target.value }));
+  };
 
   const handleLogin = () => {
     setError('');
@@ -49,8 +53,9 @@ export default function LoginPage({ onLogin }) {
 
     const newUser = { studentId: form.studentId, name: form.name, email: form.email, password: form.password };
     localStorage.setItem('inochi_users', JSON.stringify([...users, newUser]));
-    setLoading(true);
-    setTimeout(() => { onLogin(newUser); setLoading(false); }, 500);
+    setForm({ studentId: form.studentId, name: '', email: '', password: '', confirm: '' });
+    setTab('login');
+    setSuccess('註冊成功！請登入');
   };
 
   const submit = tab === 'login' ? handleLogin : handleRegister;
@@ -74,7 +79,7 @@ export default function LoginPage({ onLogin }) {
           {[['login', '會員登入'], ['register', '會員註冊']].map(([key, label]) => (
             <button
               key={key}
-              onClick={() => { setTab(key); setError(''); }}
+              onClick={() => { setTab(key); setError(''); setSuccess(''); }}
               className={`flex-1 py-4 text-sm font-bold transition-colors
                 ${tab === key ? 'text-primary border-b-2 border-primary' : 'text-gray-400'}`}
             >
@@ -84,6 +89,11 @@ export default function LoginPage({ onLogin }) {
         </div>
 
         <div className="p-6 space-y-3">
+          {success && (
+            <div className="bg-green-50 text-green-700 text-sm rounded-xl px-4 py-2.5 border border-green-200 flex items-center gap-2">
+              <span>✅</span>{success}
+            </div>
+          )}
           {error && (
             <div className="bg-red-50 text-red-600 text-sm rounded-xl px-4 py-2.5 border border-red-100">
               {error}
