@@ -77,9 +77,11 @@ function ArcGauge({ score }) {
   );
 }
 
-export default function ProfilePage() {
+export default function ProfilePage({ user, onLogout }) {
   const [showPoints, setShowPoints] = useState(false);
   const suspended = CREDIT_SCORE < 60;
+  const displayName = user?.name || user?.studentId || '使用者';
+  const displaySub = user?.email || (user?.studentId ? `學號 ${user.studentId}` : '');
 
   return (
     <div className="flex flex-col h-full overflow-y-auto bg-gray-50">
@@ -93,15 +95,22 @@ export default function ProfilePage() {
 
       {/* ── Profile banner ── */}
       <div className="bg-gradient-to-br from-orange-400 via-amber-400 to-yellow-400 px-5 pt-8 pb-20 shrink-0">
-        <div className="flex items-center gap-3">
-          <div className="w-14 h-14 rounded-full bg-white/25 flex items-center justify-center text-3xl border-2 border-white/50">
+        <div className="flex items-start gap-3">
+          <div className="w-14 h-14 rounded-full bg-white/25 flex items-center justify-center text-3xl border-2 border-white/50 shrink-0">
             👤
           </div>
-          <div className="text-white">
-            <div className="font-black text-lg">陳宥希</div>
-            <div className="text-sm opacity-75">dannychen5058@gmail.com</div>
+          <div className="text-white flex-1 min-w-0">
+            <div className="font-black text-lg truncate">{displayName}</div>
+            <div className="text-sm opacity-75 truncate">{displaySub}</div>
             <div className="text-xs opacity-60 mt-0.5">會員自 2025 年 5 月</div>
           </div>
+          <button
+            onClick={onLogout}
+            className="text-white/70 hover:text-white border border-white/30 hover:border-white/60
+              text-xs font-semibold px-3 py-1.5 rounded-xl transition-all shrink-0 mt-1"
+          >
+            登出
+          </button>
         </div>
       </div>
 

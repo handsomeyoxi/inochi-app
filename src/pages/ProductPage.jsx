@@ -46,7 +46,7 @@ export default function ProductPage() {
   const store = location.state?.store ?? mockStores[0];
   const items = STORE_ITEMS[store.type] ?? [];
 
-  const [boxQty, setBoxQty] = useState(1);
+  const [boxQty, setBoxQty] = useState(0);
   const [itemQtys, setItemQtys] = useState({});
   const [showConfirm, setShowConfirm] = useState(false);
   const [showQR, setShowQR] = useState(false);
@@ -63,7 +63,7 @@ export default function ProductPage() {
   const total = boxTotal + itemsTotal;
 
   const orderLines = useMemo(() => [
-    `🎁 驚喜包 ×${boxQty}  $${boxTotal}`,
+    ...(boxQty > 0 ? [`🎁 驚喜包 ×${boxQty}  $${boxTotal}`] : []),
     ...items
       .filter((it) => (itemQtys[it.id] ?? 0) > 0)
       .map((it) => `${it.name} ×${itemQtys[it.id]}  $${it.price * itemQtys[it.id]}`),
@@ -116,7 +116,7 @@ export default function ProductPage() {
             </div>
             <div className="flex items-center justify-center gap-6 mt-3">
               <button
-                onClick={() => setBoxQty((q) => Math.max(1, q - 1))}
+                onClick={() => setBoxQty((q) => Math.max(0, q - 1))}
                 className="w-10 h-10 rounded-full bg-white/25 text-white text-2xl font-bold flex items-center justify-center active:scale-90 transition-transform"
               >
                 −
