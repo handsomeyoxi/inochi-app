@@ -128,25 +128,21 @@ export default function LoginPage({ onLogin }) {
             {loading ? '請稍候…' : tab === 'login' ? '登入' : '建立帳號'}
           </button>
 
-          <div className="border-t border-gray-100 pt-3 text-center">
+          <div className="border-t border-gray-100 pt-3 space-y-2 text-center">
             <button
               onClick={() => navigate('/store/login')}
-              className="text-xs text-gray-400 hover:text-primary transition-colors font-medium"
+              className="text-xs text-gray-400 hover:text-primary transition-colors font-medium block w-full"
             >
               🏪 店家後台登入
             </button>
+            <button
+              onClick={() => navigate('/admin')}
+              className="text-[11px] text-gray-300 hover:text-gray-400 transition-colors block w-full"
+            >
+              管理員
+            </button>
           </div>
         </div>
-      </div>
-
-      {/* 管理員入口：刻意低調，置於頁面最底部 */}
-      <div className="mt-6 text-center">
-        <button
-          onClick={() => navigate('/admin')}
-          className="text-[11px] text-white/20 hover:text-white/50 transition-colors select-none"
-        >
-          管理員
-        </button>
       </div>
     </div>
   );
