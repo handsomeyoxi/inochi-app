@@ -1,5 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { collection, getDocs } from 'firebase/firestore';
+import { db } from '../firebase';
 
 const ADMIN_CREDENTIAL = { username: 'admin', password: '12345678' };
 
@@ -116,10 +118,22 @@ function AdminLogin({ onLogin }) {
 ══════════════════════════════════════════ */
 function AdminDashboard({ onLogout }) {
   const [tab, setTab] = useState('students');
+  const [students, setStudents] = useState([]);
+  const [loadingData, setLoadingData] = useState(true);
+  const [fetchError, setFetchError] = useState('');
 
-  const students = (() => {
-    try { return JSON.parse(localStorage.getItem('inochi_users') || '[]'); } catch { return []; }
-  })();
+  useEffect(() => {
+    (async () => {
+      try {
+        const snap = await getDocs(collection(db, 'users'));
+        setStudents(snap.docs.map((d) => d.data()));
+      } catch {
+        setFetchError('無法讀取資料，請檢查網路連線');
+      } finally {
+        setLoadingData(false);
+      }
+    })();
+  }, []);
 
   return (
     <div className="w-full h-screen max-w-md mx-auto flex flex-col bg-gray-50 shadow-2xl overflow-hidden">
@@ -185,13 +199,24 @@ function AdminDashboard({ onLogout }) {
         {/* ── 學生帳號 ── */}
         {tab === 'students' && (
           <>
-            {students.length === 0 ? (
+            {loadingData && (
+              <div className="text-center text-gray-400 py-12 text-sm">
+                <div className="text-4xl mb-3 animate-spin">⏳</div>
+                讀取資料中…
+              </div>
+            )}
+            {fetchError && (
+              <div className="bg-red-50 text-red-600 text-sm rounded-xl px-4 py-3 border border-red-100">
+                {fetchError}
+              </div>
+            )}
+            {!loadingData && !fetchError && students.length === 0 && (
               <div className="text-center text-gray-400 py-12 text-sm">
                 <div className="text-4xl mb-3">📭</div>
                 尚無已註冊的學生帳號
               </div>
-            ) : (
-              students.map((u, i) => (
+            )}
+            {!loadingData && !fetchError && students.map((u, i) => (
                 <div key={u.studentId} className="bg-white rounded-2xl shadow-sm p-4">
                   <div className="flex items-start justify-between mb-2">
                     <div className="flex items-center gap-2.5">
@@ -219,8 +244,7 @@ function AdminDashboard({ onLogout }) {
                     </div>
                   </div>
                 </div>
-              ))
-            )}
+            ))}
           </>
         )}
 

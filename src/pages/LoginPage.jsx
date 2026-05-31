@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { collection, addDoc, getDocs, query, where } from 'firebase/firestore';
+import { db } from '../firebase';
 
 function Field({ label, ...rest }) {
   return (
@@ -27,42 +29,55 @@ export default function LoginPage({ onLogin }) {
     setForm((f) => ({ ...f, [k]: e.target.value }));
   };
 
-  const handleLogin = () => {
+  const handleLogin = async () => {
     setError('');
     if (!form.studentId || !form.password) { setError('請填寫學號和密碼'); return; }
-
-    const users = JSON.parse(localStorage.getItem('inochi_users') || '[]');
-    const found = users.find((u) => u.studentId === form.studentId);
-    if (!found) { setError('帳號不存在，請先註冊'); return; }
-    if (found.password !== form.password) { setError('密碼錯誤'); return; }
-
     setLoading(true);
-    setTimeout(() => { onLogin(found); setLoading(false); }, 500);
+    try {
+      const snap = await getDocs(
+        query(collection(db, 'users'), where('studentId', '==', form.studentId))
+      );
+      if (snap.empty) { setError('帳號不存在，請先註冊'); return; }
+      const userData = snap.docs[0].data();
+      if (userData.password !== form.password) { setError('密碼錯誤'); return; }
+      onLogin(userData);
+    } catch {
+      setError('連線失敗，請稍後再試');
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handleRegister = () => {
+  const handleRegister = async () => {
     setError('');
     if (!form.studentId || !form.name || !form.email || !form.password) {
       setError('請填寫所有欄位'); return;
     }
     if (form.password.length < 6) { setError('密碼至少 6 個字元'); return; }
     if (form.password !== form.confirm) { setError('兩次密碼不一致'); return; }
-
-    const users = JSON.parse(localStorage.getItem('inochi_users') || '[]');
-    if (users.find((u) => u.studentId === form.studentId)) { setError('此學號已被註冊'); return; }
-
-    const newUser = {
-      studentId: form.studentId,
-      name: form.name,
-      email: form.email,
-      password: form.password,
-      registeredAt: new Date().toISOString(),
-      creditScore: 100,
-    };
-    localStorage.setItem('inochi_users', JSON.stringify([...users, newUser]));
-    setForm({ studentId: form.studentId, name: '', email: '', password: '', confirm: '' });
-    setTab('login');
-    setSuccess('註冊成功！請登入');
+    setLoading(true);
+    try {
+      const snap = await getDocs(
+        query(collection(db, 'users'), where('studentId', '==', form.studentId))
+      );
+      if (!snap.empty) { setError('此學號已被註冊'); return; }
+      const newUser = {
+        studentId: form.studentId,
+        name: form.name,
+        email: form.email,
+        password: form.password,
+        registeredAt: new Date().toISOString(),
+        creditScore: 100,
+      };
+      await addDoc(collection(db, 'users'), newUser);
+      setForm({ studentId: form.studentId, name: '', email: '', password: '', confirm: '' });
+      setTab('login');
+      setSuccess('註冊成功！請登入');
+    } catch {
+      setError('連線失敗，請稍後再試');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const submit = tab === 'login' ? handleLogin : handleRegister;
