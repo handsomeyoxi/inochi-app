@@ -1,24 +1,26 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { MapContainer, TileLayer, Marker, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { useNavigate } from 'react-router-dom';
+import { collection, getDocs } from 'firebase/firestore';
+import { db } from '../firebase';
 import mockStores from '../data/mockStores';
 
 const TYPE_EMOJI = { '壽司': '🍣', '飲料': '🧋', '麵包': '🍞', '便當': '🍱', '關東煮': '🍢' };
 const FILTERS = ['全部', '壽司', '飲料', '麵包', '便當', '關東煮'];
 
-const makeIcon = (store) =>
+const makeIcon = (isAvailable, type) =>
   L.divIcon({
     className: '',
     html: `<div style="
       width:44px;height:44px;border-radius:50%;
-      background:${store.is_available ? '#22c55e' : '#9ca3af'};
+      background:${isAvailable ? '#22c55e' : '#9ca3af'};
       border:3px solid white;
       box-shadow:0 2px 12px rgba(0,0,0,0.28);
       display:flex;align-items:center;justify-content:center;
       font-size:22px;cursor:pointer;
-    ">${TYPE_EMOJI[store.type]}</div>`,
+    ">${TYPE_EMOJI[type] || '🏪'}</div>`,
     iconSize: [44, 44],
     iconAnchor: [22, 22],
   });
@@ -30,9 +32,29 @@ function MapClickHandler({ onClose }) {
 
 export default function MapPage() {
   const navigate = useNavigate();
-  const [search, setSearch] = useState('');
-  const [filter, setFilter] = useState('全部');
+  const [search,   setSearch]   = useState('');
+  const [filter,   setFilter]   = useState('全部');
   const [selected, setSelected] = useState(null);
+  const [stockMap, setStockMap] = useState({}); // storeName → total stock
+
+  /* 從 Firestore 讀取各店庫存 */
+  useEffect(() => {
+    getDocs(collection(db, 'products')).then(snap => {
+      const map = {};
+      snap.docs.forEach(d => {
+        const p = d.data();
+        if (!map[p.storeId]) map[p.storeId] = 0;
+        if (p.available !== false) map[p.storeId] += (p.stock ?? 0);
+      });
+      setStockMap(map);
+    }).catch(() => {});
+  }, []);
+
+  /* 判斷一間店是否有貨（優先 Firestore，fallback mockStore） */
+  const isStoreAvailable = (store) => {
+    if (Object.keys(stockMap).length === 0) return store.is_available;
+    return (stockMap[store.name] ?? 0) > 0;
+  };
 
   const filtered = useMemo(
     () =>
@@ -96,7 +118,7 @@ export default function MapPage() {
           <Marker
             key={store.id}
             position={[store.lat, store.lng]}
-            icon={makeIcon(store)}
+            icon={makeIcon(isStoreAvailable(store), store.type)}
             eventHandlers={{ click: (e) => { e.originalEvent.stopPropagation(); setSelected(store); } }}
           />
         ))}
@@ -121,15 +143,15 @@ export default function MapPage() {
                   <span className="text-xs text-gray-400">{selected.type}</span>
                 </div>
               </div>
-              <span
-                className={`text-xs font-bold px-2.5 py-1 rounded-full mt-1
-                  ${selected.is_available
-                    ? 'bg-green-100 text-green-700'
-                    : 'bg-gray-100 text-gray-500'
-                  }`}
-              >
-                {selected.is_available ? '✅ 供應中' : '⭕ 已售完'}
-              </span>
+              {(() => {
+                const avail = isStoreAvailable(selected);
+                return (
+                  <span className={`text-xs font-bold px-2.5 py-1 rounded-full mt-1
+                    ${avail ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
+                    {avail ? '✅ 供應中' : '⭕ 已售完'}
+                  </span>
+                );
+              })()}
             </div>
 
             {/* Price / Stock / Deadline */}
@@ -158,17 +180,19 @@ export default function MapPage() {
               </span>
             </div>
 
-            <button
-              disabled={!selected.is_available}
-              onClick={() => navigate('/products', { state: { store: selected } })}
-              className={`w-full py-3.5 rounded-2xl font-bold text-white text-base transition-all
-                ${selected.is_available
-                  ? 'bg-primary hover:bg-primary-dark active:scale-[0.97]'
-                  : 'bg-gray-200 text-gray-400 cursor-not-allowed'
-                }`}
-            >
-              {selected.is_available ? '立即預訂 →' : '已無庫存'}
-            </button>
+            {(() => {
+              const avail = isStoreAvailable(selected);
+              return (
+                <button
+                  disabled={!avail}
+                  onClick={() => navigate('/products', { state: { store: selected } })}
+                  className={`w-full py-3.5 rounded-2xl font-bold text-white text-base transition-all
+                    ${avail ? 'bg-primary hover:bg-primary-dark active:scale-[0.97]' : 'bg-gray-200 text-gray-400 cursor-not-allowed'}`}
+                >
+                  {avail ? '立即預訂 →' : '已無庫存'}
+                </button>
+              );
+            })()}
           </div>
         )}
       </div>

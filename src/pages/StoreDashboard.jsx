@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { collection, addDoc, getDocs, query, where, updateDoc, onSnapshot, orderBy } from 'firebase/firestore';
+import { collection, addDoc, getDocs, doc, deleteDoc, query, where, updateDoc, onSnapshot, orderBy } from 'firebase/firestore';
 import { db } from '../firebase';
 
 const TYPE_EMOJI = { '壽司': '🍣', '飲料': '🧋', '麵包': '🍞', '便當': '🍱', '關東煮': '🍢' };
@@ -67,7 +67,7 @@ function ProductCard({ product, onUpdate, onStockAdjust, onDelete }) {
   const setDraftField = (k) => (e) => setDraft((d) => ({ ...d, [k]: e.target.value }));
 
   const saveEdit = () => {
-    onUpdate(product.id, {
+    onUpdate({
       name: draft.name,
       originalPrice: Number(draft.originalPrice) || product.originalPrice,
       specialPrice: Number(draft.specialPrice) || product.specialPrice,
@@ -106,7 +106,7 @@ function ProductCard({ product, onUpdate, onStockAdjust, onDelete }) {
           <span className="text-xs text-gray-400">{product.available ? '上架中' : '已下架'}</span>
           <Toggle
             checked={product.available}
-            onChange={() => onUpdate(product.id, { available: !product.available })}
+            onChange={() => onUpdate({ available: !product.available })}
           />
         </div>
       </div>
@@ -150,7 +150,7 @@ function ProductCard({ product, onUpdate, onStockAdjust, onDelete }) {
         <div className="flex items-center gap-2">
           <span className="text-xs text-gray-500 font-medium">庫存</span>
           <button
-            onClick={() => onStockAdjust(product.id, -1)}
+            onClick={() => onStockAdjust(-1)}
             className={`w-7 h-7 rounded-full text-sm font-bold flex items-center justify-center transition-all
               ${product.stock > 0
                 ? 'bg-gray-100 text-gray-600 hover:bg-gray-200'
@@ -158,7 +158,7 @@ function ProductCard({ product, onUpdate, onStockAdjust, onDelete }) {
           >−</button>
           <span className="w-6 text-center text-sm font-bold text-gray-700">{product.stock}</span>
           <button
-            onClick={() => onStockAdjust(product.id, 1)}
+            onClick={() => onStockAdjust(1)}
             className="w-7 h-7 rounded-full bg-primary text-white text-sm font-bold flex items-center justify-center"
           >+</button>
         </div>
@@ -272,23 +272,39 @@ function AddProductForm({ onAdd, onCancel }) {
 
 /* ── Main dashboard ── */
 export default function StoreDashboard({ storeAuth, onLogout }) {
-  const storageKey = `inochi_products_${storeAuth.id}`;
-
   const [tab, setTab] = useState('products');
-  const [products, setProducts] = useState(() => {
-    try {
-      const saved = localStorage.getItem(storageKey);
-      return saved ? JSON.parse(saved) : (INITIAL_PRODUCTS[storeAuth.type] ?? []);
-    } catch {
-      return INITIAL_PRODUCTS[storeAuth.type] ?? [];
-    }
-  });
+  const [products, setProducts]             = useState([]);
+  const [productsLoading, setProductsLoading] = useState(true);
   const [orders, setOrders]               = useState([]);
   const [ordersLoading, setOrdersLoading] = useState(true);
   const [showAdd, setShowAdd]             = useState(false);
   const [confirmInput, setConfirmInput]   = useState('');
   const [confirmMsg, setConfirmMsg]       = useState({ type: '', text: '' });
   const [confirming, setConfirming]       = useState(false);
+
+  /* ── 商品：首次自動 seed，之後即時監聽 ── */
+  useEffect(() => {
+    let unsub = null;
+    const setup = async () => {
+      const existing = await getDocs(query(collection(db, 'products'), where('storeId', '==', storeAuth.name)));
+      if (existing.empty) {
+        for (const p of INITIAL_PRODUCTS[storeAuth.type] ?? []) {
+          await addDoc(collection(db, 'products'), {
+            storeId: storeAuth.name, name: p.name,
+            originalPrice: p.originalPrice, specialPrice: p.specialPrice,
+            stock: p.stock, available: p.available, isBox: p.isBox,
+          });
+        }
+      }
+      const q = query(collection(db, 'products'), where('storeId', '==', storeAuth.name));
+      unsub = onSnapshot(q,
+        (snap) => { setProducts(snap.docs.map(d => ({ ...d.data(), _docId: d.id }))); setProductsLoading(false); },
+        () => setProductsLoading(false)
+      );
+    };
+    setup();
+    return () => { if (unsub) unsub(); };
+  }, [storeAuth.name]);
 
   /* ── 即時監聽該店家訂單 ── */
   useEffect(() => {
@@ -346,21 +362,30 @@ export default function StoreDashboard({ storeAuth, onLogout }) {
 
   const handleConfirmPickup = () => doConfirmPickup(confirmInput.trim());
 
-  const persist = (updated) => {
-    setProducts(updated);
-    localStorage.setItem(storageKey, JSON.stringify(updated));
+  const handleUpdate = async (docId, patch) => {
+    await updateDoc(doc(db, 'products', docId), patch);
   };
 
-  const handleUpdate = (id, patch) =>
-    persist(products.map((p) => p.id === id ? { ...p, ...patch } : p));
+  const handleStockAdjust = async (docId, delta) => {
+    const p = products.find(x => x._docId === docId);
+    if (!p) return;
+    await updateDoc(doc(db, 'products', docId), { stock: Math.max(0, p.stock + delta) });
+  };
 
-  const handleStockAdjust = (id, delta) =>
-    persist(products.map((p) => p.id === id ? { ...p, stock: Math.max(0, p.stock + delta) } : p));
+  const handleDelete = async (docId) => {
+    await deleteDoc(doc(db, 'products', docId));
+  };
 
-  const handleDelete = (id) => persist(products.filter((p) => p.id !== id));
-
-  const handleAdd = (product) => {
-    persist([...products, product]);
+  const handleAdd = async (product) => {
+    await addDoc(collection(db, 'products'), {
+      storeId: storeAuth.name,
+      name: product.name,
+      originalPrice: product.originalPrice,
+      specialPrice: product.specialPrice,
+      stock: product.stock,
+      available: true,
+      isBox: false,
+    });
     setShowAdd(false);
   };
 
@@ -416,16 +441,17 @@ export default function StoreDashboard({ storeAuth, onLogout }) {
         {/* Products tab */}
         {tab === 'products' && (
           <>
-            {products.length === 0 && !showAdd && (
+            {productsLoading && <div className="text-center text-gray-400 py-10 text-sm">載入商品中…</div>}
+            {!productsLoading && products.length === 0 && !showAdd && (
               <div className="text-center text-gray-400 py-10 text-sm">尚無商品，點下方新增</div>
             )}
             {products.map((p) => (
               <ProductCard
-                key={p.id}
+                key={p._docId}
                 product={p}
-                onUpdate={handleUpdate}
-                onStockAdjust={handleStockAdjust}
-                onDelete={handleDelete}
+                onUpdate={(patch) => handleUpdate(p._docId, patch)}
+                onStockAdjust={(delta) => handleStockAdjust(p._docId, delta)}
+                onDelete={() => handleDelete(p._docId)}
               />
             ))}
             {showAdd
