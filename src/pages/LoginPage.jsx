@@ -137,9 +137,9 @@ export default function LoginPage({ onLogin }) {
             </button>
             <button
               onClick={() => navigate('/admin')}
-              className="text-[11px] text-gray-300 hover:text-gray-400 transition-colors block w-full"
+              className="text-sm text-gray-500 hover:text-primary font-medium transition-colors block w-full"
             >
-              管理員
+              🔧 管理員後台
             </button>
           </div>
         </div>
