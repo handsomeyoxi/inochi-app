@@ -51,7 +51,14 @@ export default function LoginPage({ onLogin }) {
     const users = JSON.parse(localStorage.getItem('inochi_users') || '[]');
     if (users.find((u) => u.studentId === form.studentId)) { setError('此學號已被註冊'); return; }
 
-    const newUser = { studentId: form.studentId, name: form.name, email: form.email, password: form.password };
+    const newUser = {
+      studentId: form.studentId,
+      name: form.name,
+      email: form.email,
+      password: form.password,
+      registeredAt: new Date().toISOString(),
+      creditScore: 100,
+    };
     localStorage.setItem('inochi_users', JSON.stringify([...users, newUser]));
     setForm({ studentId: form.studentId, name: '', email: '', password: '', confirm: '' });
     setTab('login');
@@ -121,12 +128,6 @@ export default function LoginPage({ onLogin }) {
             {loading ? '請稍候…' : tab === 'login' ? '登入' : '建立帳號'}
           </button>
 
-          {tab === 'login' && (
-            <p className="text-center text-xs text-gray-400 pb-1">
-              尚未註冊？學號直接登入也可使用基本功能
-            </p>
-          )}
-
           <div className="border-t border-gray-100 pt-3 text-center">
             <button
               onClick={() => navigate('/store/login')}
@@ -136,6 +137,16 @@ export default function LoginPage({ onLogin }) {
             </button>
           </div>
         </div>
+      </div>
+
+      {/* 管理員入口：刻意低調，置於頁面最底部 */}
+      <div className="mt-6 text-center">
+        <button
+          onClick={() => navigate('/admin')}
+          className="text-[11px] text-white/20 hover:text-white/50 transition-colors select-none"
+        >
+          管理員
+        </button>
       </div>
     </div>
   );

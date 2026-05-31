@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
-import { BrowserRouter, Routes, Route, NavLink } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, NavLink, useLocation } from 'react-router-dom';
 import MapPage from './pages/MapPage';
 import ProductPage from './pages/ProductPage';
 import ProfilePage from './pages/ProfilePage';
 import LoginPage from './pages/LoginPage';
 import StoreLoginPage from './pages/StoreLoginPage';
 import StoreDashboard from './pages/StoreDashboard';
+import AdminPage from './pages/AdminPage';
 
 const NAV = [
   { to: '/',         end: true,  icon: '🗺️',  label: '地圖' },
@@ -45,12 +46,16 @@ function Shell({ user, onLogout }) {
 }
 
 function AppContent() {
+  const { pathname } = useLocation();
   const [user, setUser] = useState(() => {
     try { return JSON.parse(localStorage.getItem('inochi_user') || 'null'); } catch { return null; }
   });
   const [storeAuth, setStoreAuth] = useState(() => {
     try { return JSON.parse(localStorage.getItem('inochi_store_auth') || 'null'); } catch { return null; }
   });
+
+  /* Admin is always accessible regardless of other auth state */
+  if (pathname === '/admin') return <AdminPage />;
 
   const loginUser = (u) => {
     localStorage.setItem('inochi_user', JSON.stringify(u));
