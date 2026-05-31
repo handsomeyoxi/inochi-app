@@ -1,4 +1,6 @@
 import React, { useState } from 'react';
+import { collection, addDoc, getDocs, query, where, updateDoc } from 'firebase/firestore';
+import { db } from '../firebase';
 
 const TYPE_EMOJI = { '壽司': '🍣', '飲料': '🧋', '麵包': '🍞', '便當': '🍱', '關東煮': '🍢' };
 
@@ -285,6 +287,59 @@ export default function StoreDashboard({ storeAuth, onLogout }) {
   });
   const [orders, setOrders] = useState(MOCK_ORDERS);
   const [showAdd, setShowAdd] = useState(false);
+  const [confirmInput, setConfirmInput] = useState('');
+  const [confirmMsg, setConfirmMsg]     = useState({ type: '', text: '' });
+  const [confirming, setConfirming]     = useState(false);
+
+  const handleConfirmPickup = async () => {
+    const oid = confirmInput.trim();
+    if (!oid) return;
+    setConfirming(true);
+    setConfirmMsg({ type: '', text: '' });
+    try {
+      /* 1. 找訂單 */
+      const orderSnap = await getDocs(query(collection(db, 'orders'), where('orderId', '==', oid)));
+      if (orderSnap.empty) {
+        setConfirmMsg({ type: 'error', text: '找不到此訂單編號' });
+        return;
+      }
+      const orderDoc  = orderSnap.docs[0];
+      const orderData = orderDoc.data();
+      if (orderData.status !== '待取餐') {
+        setConfirmMsg({ type: 'error', text: `此訂單狀態為「${orderData.status}」，無需再次確認` });
+        return;
+      }
+
+      /* 2. 更新訂單狀態 */
+      await updateDoc(orderDoc.ref, { status: '已完成' });
+
+      /* 3. 更新學生 creditScore +10 */
+      const userSnap = await getDocs(query(collection(db, 'users'), where('studentId', '==', orderData.studentId)));
+      if (!userSnap.empty) {
+        const userDoc = userSnap.docs[0];
+        await updateDoc(userDoc.ref, { creditScore: (userDoc.data().creditScore ?? 100) + 10 });
+      }
+
+      /* 4. 新增積分明細 */
+      const now = new Date();
+      await addDoc(collection(db, 'points_log'), {
+        studentId: orderData.studentId,
+        desc: `成功取餐 - ${orderData.store}`,
+        pts: 10,
+        date: `${String(now.getMonth() + 1).padStart(2, '0')}/${String(now.getDate()).padStart(2, '0')}`,
+        createdAt: now.toISOString(),
+      });
+
+      setConfirmMsg({ type: 'success', text: `✅ 取餐確認！已為 ${orderData.studentId} 加 10 積分` });
+      setConfirmInput('');
+      /* 同步更新本地 mock 訂單顯示 */
+      setOrders((prev) => prev.map((o) => o.id === oid ? { ...o, status: '已完成' } : o));
+    } catch {
+      setConfirmMsg({ type: 'error', text: '操作失敗，請重試' });
+    } finally {
+      setConfirming(false);
+    }
+  };
 
   const persist = (updated) => {
     setProducts(updated);
@@ -387,6 +442,34 @@ export default function StoreDashboard({ storeAuth, onLogout }) {
         {/* Orders tab */}
         {tab === 'orders' && (
           <>
+            {/* ── 確認取餐 ── */}
+            <div className="bg-white rounded-2xl shadow-sm p-4">
+              <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">掃碼 / 輸入訂單編號確認取餐</p>
+              <div className="flex gap-2">
+                <input
+                  className="flex-1 border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-primary bg-gray-50 font-mono"
+                  placeholder="ORD-XXXXXXXX"
+                  value={confirmInput}
+                  onChange={(e) => setConfirmInput(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && handleConfirmPickup()}
+                />
+                <button
+                  onClick={handleConfirmPickup}
+                  disabled={confirming || !confirmInput.trim()}
+                  className="bg-green-500 hover:bg-green-600 text-white text-sm font-bold px-4 py-2 rounded-xl
+                    disabled:opacity-40 transition-colors shrink-0"
+                >
+                  {confirming ? '…' : '確認'}
+                </button>
+              </div>
+              {confirmMsg.text && (
+                <div className={`mt-2 text-sm rounded-xl px-3 py-2
+                  ${confirmMsg.type === 'success' ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-600'}`}>
+                  {confirmMsg.text}
+                </div>
+              )}
+            </div>
+
             {pendingCount > 0 && (
               <div className="bg-orange-50 border border-orange-200 rounded-2xl px-4 py-2.5 flex items-center gap-2">
                 <span>⏳</span>
