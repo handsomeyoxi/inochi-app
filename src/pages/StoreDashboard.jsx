@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { collection, addDoc, getDocs, query, where, updateDoc } from 'firebase/firestore';
+import React, { useState, useEffect } from 'react';
+import { collection, addDoc, getDocs, query, where, updateDoc, onSnapshot, orderBy } from 'firebase/firestore';
 import { db } from '../firebase';
 
 const TYPE_EMOJI = { '壽司': '🍣', '飲料': '🧋', '麵包': '🍞', '便當': '🍱', '關東煮': '🍢' };
@@ -40,13 +40,6 @@ const INITIAL_PRODUCTS = {
   ],
 };
 
-const MOCK_ORDERS = [
-  { id: 'ORD-T001', customer: '王○明', items: ['驚喜包 ×2'],                       total: 320, time: '18:32', status: '待取餐' },
-  { id: 'ORD-T002', customer: '李○華', items: ['鮭魚握壽司 ×1', '玉子燒 ×2'],       total: 180, time: '17:45', status: '已完成' },
-  { id: 'ORD-T003', customer: '陳○誠', items: ['驚喜包 ×1', '鮪魚細卷 ×3'],         total: 370, time: '19:05', status: '待取餐' },
-  { id: 'ORD-T004', customer: '林○如', items: ['玉子燒 ×3'],                        total: 135, time: '16:20', status: '已完成' },
-  { id: 'ORD-T005', customer: '張○宏', items: ['驚喜包 ×1', '玉子燒 ×1'],           total: 205, time: '19:48', status: '待取餐' },
-];
 
 /* ── Toggle switch ── */
 function Toggle({ checked, onChange }) {
@@ -190,12 +183,17 @@ function ProductCard({ product, onUpdate, onStockAdjust, onDelete }) {
 
 /* ── Order card ── */
 function OrderCard({ order, onComplete }) {
+  const timeStr = order.createdAt
+    ? new Date(order.createdAt).toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit', hour12: false })
+    : '';
   return (
     <div className="bg-white rounded-2xl shadow-sm p-4">
       <div className="flex items-start justify-between mb-2">
         <div>
-          <div className="text-sm font-bold text-gray-800 font-mono">{order.id}</div>
-          <div className="text-xs text-gray-400 mt-0.5">{order.customer} · {order.time}</div>
+          <div className="text-sm font-bold text-gray-800 font-mono">{order.orderId}</div>
+          <div className="text-xs text-gray-400 mt-0.5">
+            {order.studentName || order.studentId} · {timeStr}
+          </div>
         </div>
         <span className={`text-xs font-bold px-2.5 py-1 rounded-full shrink-0
           ${order.status === '待取餐' ? 'bg-orange-100 text-orange-700' : 'bg-green-100 text-green-700'}`}>
@@ -204,7 +202,7 @@ function OrderCard({ order, onComplete }) {
       </div>
 
       <div className="space-y-0.5 mb-3">
-        {order.items.map((item, i) => (
+        {(order.items || []).map((item, i) => (
           <div key={i} className="text-sm text-gray-600">{item}</div>
         ))}
       </div>
@@ -213,7 +211,7 @@ function OrderCard({ order, onComplete }) {
         <div className="text-lg font-black text-primary">${order.total}</div>
         {order.status === '待取餐' && (
           <button
-            onClick={() => onComplete(order.id)}
+            onClick={() => onComplete(order.orderId)}
             className="bg-green-500 hover:bg-green-600 text-white text-xs font-bold px-4 py-2 rounded-xl transition-colors"
           >
             確認取餐 ✓
@@ -285,42 +283,49 @@ export default function StoreDashboard({ storeAuth, onLogout }) {
       return INITIAL_PRODUCTS[storeAuth.type] ?? [];
     }
   });
-  const [orders, setOrders] = useState(MOCK_ORDERS);
-  const [showAdd, setShowAdd] = useState(false);
-  const [confirmInput, setConfirmInput] = useState('');
-  const [confirmMsg, setConfirmMsg]     = useState({ type: '', text: '' });
-  const [confirming, setConfirming]     = useState(false);
+  const [orders, setOrders]               = useState([]);
+  const [ordersLoading, setOrdersLoading] = useState(true);
+  const [showAdd, setShowAdd]             = useState(false);
+  const [confirmInput, setConfirmInput]   = useState('');
+  const [confirmMsg, setConfirmMsg]       = useState({ type: '', text: '' });
+  const [confirming, setConfirming]       = useState(false);
 
-  const handleConfirmPickup = async () => {
-    const oid = confirmInput.trim();
+  /* ── 即時監聽該店家訂單 ── */
+  useEffect(() => {
+    const q = query(
+      collection(db, 'orders'),
+      where('storeId', '==', storeAuth.name),
+      orderBy('createdAt', 'desc')
+    );
+    const unsub = onSnapshot(q,
+      (snap) => { setOrders(snap.docs.map((d) => d.data())); setOrdersLoading(false); },
+      () => setOrdersLoading(false)
+    );
+    return () => unsub();
+  }, [storeAuth.name]);
+
+  /* ── 確認取餐核心邏輯 ── */
+  const doConfirmPickup = async (oid) => {
     if (!oid) return;
     setConfirming(true);
     setConfirmMsg({ type: '', text: '' });
     try {
-      /* 1. 找訂單 */
       const orderSnap = await getDocs(query(collection(db, 'orders'), where('orderId', '==', oid)));
-      if (orderSnap.empty) {
-        setConfirmMsg({ type: 'error', text: '找不到此訂單編號' });
-        return;
-      }
+      if (orderSnap.empty) { setConfirmMsg({ type: 'error', text: '找不到此訂單編號' }); return; }
       const orderDoc  = orderSnap.docs[0];
       const orderData = orderDoc.data();
       if (orderData.status !== '待取餐') {
         setConfirmMsg({ type: 'error', text: `此訂單狀態為「${orderData.status}」，無需再次確認` });
         return;
       }
-
-      /* 2. 更新訂單狀態 */
       await updateDoc(orderDoc.ref, { status: '已完成' });
 
-      /* 3. 更新學生 creditScore +10 */
       const userSnap = await getDocs(query(collection(db, 'users'), where('studentId', '==', orderData.studentId)));
       if (!userSnap.empty) {
         const userDoc = userSnap.docs[0];
         await updateDoc(userDoc.ref, { creditScore: (userDoc.data().creditScore ?? 100) + 10 });
       }
 
-      /* 4. 新增積分明細 */
       const now = new Date();
       await addDoc(collection(db, 'points_log'), {
         studentId: orderData.studentId,
@@ -330,16 +335,16 @@ export default function StoreDashboard({ storeAuth, onLogout }) {
         createdAt: now.toISOString(),
       });
 
-      setConfirmMsg({ type: 'success', text: `✅ 取餐確認！已為 ${orderData.studentId} 加 10 積分` });
+      setConfirmMsg({ type: 'success', text: `✅ 取餐確認！已為 ${orderData.studentName || orderData.studentId} 加 10 積分` });
       setConfirmInput('');
-      /* 同步更新本地 mock 訂單顯示 */
-      setOrders((prev) => prev.map((o) => o.id === oid ? { ...o, status: '已完成' } : o));
     } catch {
       setConfirmMsg({ type: 'error', text: '操作失敗，請重試' });
     } finally {
       setConfirming(false);
     }
   };
+
+  const handleConfirmPickup = () => doConfirmPickup(confirmInput.trim());
 
   const persist = (updated) => {
     setProducts(updated);
@@ -359,11 +364,10 @@ export default function StoreDashboard({ storeAuth, onLogout }) {
     setShowAdd(false);
   };
 
-  const completeOrder = (id) =>
-    setOrders((prev) => prev.map((o) => o.id === id ? { ...o, status: '已完成' } : o));
-
-  const pendingCount = orders.filter((o) => o.status === '待取餐').length;
-  const totalRevenue = orders.filter((o) => o.status === '已完成').reduce((s, o) => s + o.total, 0);
+  const today = new Date().toISOString().slice(0, 10);
+  const todayOrders  = orders.filter((o) => o.createdAt?.startsWith(today));
+  const pendingCount = todayOrders.filter((o) => o.status === '待取餐').length;
+  const totalRevenue = todayOrders.filter((o) => o.status === '已完成').reduce((s, o) => s + o.total, 0);
 
   return (
     <div className="w-full h-screen max-w-md mx-auto flex flex-col bg-gray-50 shadow-2xl overflow-hidden">
@@ -470,16 +474,22 @@ export default function StoreDashboard({ storeAuth, onLogout }) {
               )}
             </div>
 
-            {pendingCount > 0 && (
-              <div className="bg-orange-50 border border-orange-200 rounded-2xl px-4 py-2.5 flex items-center gap-2">
-                <span>⏳</span>
-                <span className="text-sm text-orange-700 font-semibold">
-                  {pendingCount} 筆訂單待取餐
-                </span>
+            {ordersLoading && (
+              <div className="text-center text-gray-400 py-8 text-sm">載入訂單中…</div>
+            )}
+            {!ordersLoading && todayOrders.length === 0 && (
+              <div className="text-center text-gray-400 py-8 text-sm">
+                <div className="text-3xl mb-2">📋</div>今日尚無訂單
               </div>
             )}
-            {orders.map((o) => (
-              <OrderCard key={o.id} order={o} onComplete={completeOrder} />
+            {!ordersLoading && pendingCount > 0 && (
+              <div className="bg-orange-50 border border-orange-200 rounded-2xl px-4 py-2.5 flex items-center gap-2">
+                <span>⏳</span>
+                <span className="text-sm text-orange-700 font-semibold">{pendingCount} 筆訂單待取餐</span>
+              </div>
+            )}
+            {!ordersLoading && todayOrders.map((o) => (
+              <OrderCard key={o.orderId} order={o} onComplete={(oid) => doConfirmPickup(oid)} />
             ))}
           </>
         )}

@@ -239,14 +239,16 @@ export default function ProductPage() {
                   const now = new Date();
                   const orderData = {
                     orderId,
-                    studentId: currentUser?.studentId || 'guest',
-                    store: store.name,
-                    storeType: store.type,
-                    items: orderLines,
+                    studentId:   currentUser?.studentId || 'guest',
+                    studentName: currentUser?.name || currentUser?.studentId || 'guest',
+                    storeId:     store.name,
+                    store:       store.name,
+                    storeType:   store.type,
+                    items:       orderLines,
                     total,
-                    deadline: store.pickup_deadline,
-                    status: '待取餐',
-                    createdAt: now.toISOString(),
+                    deadline:    store.pickup_deadline,
+                    status:      '待取餐',
+                    createdAt:   now.toISOString(),
                     date: `${String(now.getMonth() + 1).padStart(2, '0')}/${String(now.getDate()).padStart(2, '0')}`,
                   };
                   try { await addDoc(collection(db, 'orders'), orderData); } catch { /* silent */ }
