@@ -1,6 +1,8 @@
 import React, { useState, useMemo } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { QRCodeSVG } from 'qrcode.react';
+import { collection, addDoc } from 'firebase/firestore';
+import { db } from '../firebase';
 import mockStores from '../data/mockStores';
 
 const TYPE_EMOJI = { '壽司': '🍣', '飲料': '🧋', '麵包': '🍞', '便當': '🍱', '關東煮': '🍢' };
@@ -231,7 +233,25 @@ export default function ProductPage() {
                 再想想
               </button>
               <button
-                onClick={() => { setShowConfirm(false); setShowQR(true); }}
+                onClick={async () => {
+                  setShowConfirm(false);
+                  const currentUser = JSON.parse(localStorage.getItem('inochi_user') || 'null');
+                  const now = new Date();
+                  const orderData = {
+                    orderId,
+                    studentId: currentUser?.studentId || 'guest',
+                    store: store.name,
+                    storeType: store.type,
+                    items: orderLines,
+                    total,
+                    deadline: store.pickup_deadline,
+                    status: '待取餐',
+                    createdAt: now.toISOString(),
+                    date: `${String(now.getMonth() + 1).padStart(2, '0')}/${String(now.getDate()).padStart(2, '0')}`,
+                  };
+                  try { await addDoc(collection(db, 'orders'), orderData); } catch { /* silent */ }
+                  setShowQR(true);
+                }}
                 className="flex-1 py-3 rounded-2xl bg-primary text-white font-bold"
               >
                 確認預訂

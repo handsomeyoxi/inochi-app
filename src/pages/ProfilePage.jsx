@@ -1,4 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { collection, getDocs, query, where } from 'firebase/firestore';
+import { db } from '../firebase';
 
 const CREDIT_SCORE = 85;
 
@@ -10,13 +12,6 @@ const POINTS_LOG = [
   { id: 5, desc: '首次使用獎勵', pts: +30, date: '05/01' },
 ];
 
-const ORDER_HISTORY = [
-  { id: 'ORD-A1B2C3', store: '濱海迴轉壽司', total: 160, status: '已完成', date: '05/28' },
-  { id: 'ORD-D4E5F6', store: '阿嬤的便當', total: 55, status: '已完成', date: '05/26' },
-  { id: 'ORD-G7H8I9', store: '小Q飲料坊', total: 79, status: '已取消', date: '05/24' },
-  { id: 'ORD-J0K1L2', store: '老師傅麵包坊', total: 99, status: '已完成', date: '05/22' },
-  { id: 'ORD-M3N4O5', store: '熱呼呼關東煮', total: 85, status: '待取餐', date: '05/30' },
-];
 
 const STATUS_CLS = {
   已完成: 'bg-green-100 text-green-700',
@@ -79,7 +74,27 @@ function ArcGauge({ score }) {
 
 export default function ProfilePage({ user, onLogout }) {
   const [showPoints, setShowPoints] = useState(false);
+  const [orders, setOrders] = useState([]);
+  const [loadingOrders, setLoadingOrders] = useState(true);
   const suspended = CREDIT_SCORE < 60;
+
+  useEffect(() => {
+    if (!user?.studentId) { setLoadingOrders(false); return; }
+    (async () => {
+      try {
+        const snap = await getDocs(
+          query(collection(db, 'orders'), where('studentId', '==', user.studentId))
+        );
+        const data = snap.docs.map((d) => d.data());
+        data.sort((a, b) => (b.createdAt > a.createdAt ? 1 : -1));
+        setOrders(data);
+      } catch {
+        // 無法讀取時保持空陣列
+      } finally {
+        setLoadingOrders(false);
+      }
+    })();
+  }, [user?.studentId]);
   const displayName = user?.name || user?.studentId || '使用者';
   const displaySub = user?.email || (user?.studentId ? `學號 ${user.studentId}` : '');
 
@@ -161,26 +176,35 @@ export default function ProfilePage({ user, onLogout }) {
       {/* ── Order history ── */}
       <div className="mx-4 mb-6 shrink-0">
         <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">歷史訂單</p>
-        <div className="bg-white rounded-2xl shadow-sm divide-y divide-gray-50">
-          {ORDER_HISTORY.map((order) => (
-            <div key={order.id} className="flex items-center px-4 py-3.5 gap-3">
-              <div className="flex-1 min-w-0">
-                <div className="text-sm font-semibold text-gray-800 truncate">{order.store}</div>
-                <div className="text-xs text-gray-400 mt-0.5">
-                  {order.date} · {order.id}
+
+        {loadingOrders ? (
+          <div className="text-center text-gray-400 py-8 text-sm">載入中…</div>
+        ) : orders.length === 0 ? (
+          <div className="bg-white rounded-2xl shadow-sm px-4 py-10 text-center">
+            <div className="text-4xl mb-2">📋</div>
+            <div className="text-sm text-gray-400">尚無訂單紀錄</div>
+            <div className="text-xs text-gray-300 mt-1">預訂取餐後將顯示於此</div>
+          </div>
+        ) : (
+          <div className="bg-white rounded-2xl shadow-sm divide-y divide-gray-50">
+            {orders.map((order) => (
+              <div key={order.orderId} className="flex items-center px-4 py-3.5 gap-3">
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-semibold text-gray-800 truncate">{order.store}</div>
+                  <div className="text-xs text-gray-400 mt-0.5">
+                    {order.date} · {order.orderId}
+                  </div>
+                </div>
+                <div className="text-right shrink-0">
+                  <div className="text-sm font-bold text-gray-800 mb-1">${order.total}</div>
+                  <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${STATUS_CLS[order.status]}`}>
+                    {order.status}
+                  </span>
                 </div>
               </div>
-              <div className="text-right shrink-0">
-                <div className="text-sm font-bold text-gray-800 mb-1">${order.total}</div>
-                <span
-                  className={`text-xs font-semibold px-2 py-0.5 rounded-full ${STATUS_CLS[order.status]}`}
-                >
-                  {order.status}
-                </span>
-              </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
