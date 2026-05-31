@@ -2,11 +2,11 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 const STORE_ACCOUNTS = [
-  { id: 1, username: 'sushi01', password: 'inochi2025', name: '濱海迴轉壽司', type: '壽司' },
-  { id: 2, username: 'drink01', password: 'inochi2025', name: '小Q飲料坊',    type: '飲料' },
-  { id: 3, username: 'bread01', password: 'inochi2025', name: '老師傅麵包坊', type: '麵包' },
-  { id: 4, username: 'bento01', password: 'inochi2025', name: '阿嬤的便當',   type: '便當' },
-  { id: 5, username: 'oden01',  password: 'inochi2025', name: '熱呼呼關東煮', type: '關東煮' },
+  { id: 1, username: 'sushi01', password: '12345678', name: '濱海迴轉壽司', type: '壽司' },
+  { id: 2, username: 'drink01', password: '12345678', name: '小Q飲料坊',    type: '飲料' },
+  { id: 3, username: 'bread01', password: '12345678', name: '老師傅麵包坊', type: '麵包' },
+  { id: 4, username: 'bento01', password: '12345678', name: '阿嬤的便當',   type: '便當' },
+  { id: 5, username: 'oden01',  password: '12345678', name: '熱呼呼關東煮', type: '關東煮' },
 ];
 
 const TYPE_EMOJI = { '壽司': '🍣', '飲料': '🧋', '麵包': '🍞', '便當': '🍱', '關東煮': '🍢' };
