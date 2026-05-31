@@ -12,8 +12,7 @@ const STORE_ACCOUNTS = [
   { username: 'oden01',  password: '12345678', name: '熱呼呼關東煮', type: '關東煮' },
 ];
 
-const STORE_TYPES = ['壽司', '飲料', '麵包', '便當', '關東煮'];
-const TYPE_EMOJI  = { '壽司': '🍣', '飲料': '🧋', '麵包': '🍞', '便當': '🍱', '關東煮': '🍢' };
+const TYPE_EMOJI = { '壽司': '🍣', '飲料': '🧋', '麵包': '🍞', '便當': '🍱', '關東煮': '🍢' };
 
 function Field({ label, children }) {
   return (
@@ -193,11 +192,8 @@ export default function StoreLoginPage({ onLogin }) {
                   value={regForm.password} onChange={setR('password')} onKeyDown={handleKey} />
               </Field>
               <Field label="店家類型">
-                <select className={inputCls} value={regForm.type} onChange={setR('type')}>
-                  {STORE_TYPES.map((t) => (
-                    <option key={t} value={t}>{TYPE_EMOJI[t]} {t}</option>
-                  ))}
-                </select>
+                <input className={inputCls} placeholder="例：壽司、飲料、麵包、便當…"
+                  value={regForm.type} onChange={setR('type')} onKeyDown={handleKey} />
               </Field>
 
               <button onClick={handleRegister} disabled={loading}
