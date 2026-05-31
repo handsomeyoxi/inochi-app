@@ -10,25 +10,24 @@ import mockStores from '../data/mockStores';
 
 const TYPE_EMOJI = { '壽司': '🍣', '飲料': '🧋', '麵包': '🍞', '便當': '🍱', '關東煮': '🍢' };
 
-/* 種子資料：store 首次被瀏覽時自動建立 */
 const SEED_PRODUCTS = {
-  壽司: [
+  壽司:  [
     { name: '鮭魚握壽司 (2入)', originalPrice: 120, specialPrice: 90,  stock: 8  },
     { name: '玉子燒',           originalPrice: 70,  specialPrice: 45,  stock: 10 },
     { name: '鮪魚細卷',         originalPrice: 100, specialPrice: 70,  stock: 5  },
   ],
-  飲料: [
+  飲料:  [
     { name: '珍珠奶茶 (L)',  originalPrice: 80,  specialPrice: 65, stock: 10 },
     { name: '紅茶拿鐵 (M)', originalPrice: 70,  specialPrice: 55, stock: 8  },
     { name: '冬瓜茶 (L)',   originalPrice: 55,  specialPrice: 40, stock: 12 },
   ],
-  麵包: [
+  麵包:  [
     { name: '法式可頌',       originalPrice: 65,  specialPrice: 45, stock: 8  },
     { name: '菠蘿麵包',       originalPrice: 50,  specialPrice: 35, stock: 10 },
     { name: '咖哩麵包',       originalPrice: 70,  specialPrice: 50, stock: 6  },
     { name: '奶油餐包 (3入)', originalPrice: 80,  specialPrice: 60, stock: 5  },
   ],
-  便當: [
+  便當:  [
     { name: '排骨便當', originalPrice: 110, specialPrice: 90,  stock: 3 },
     { name: '雞腿便當', originalPrice: 120, specialPrice: 100, stock: 2 },
     { name: '素食便當', originalPrice: 90,  specialPrice: 75,  stock: 2 },
@@ -49,32 +48,46 @@ function genOrderId() {
 export default function ProductPage() {
   const location = useLocation();
   const navigate  = useNavigate();
-  const store     = location.state?.store ?? mockStores[0];
+
+  /* 安全取得 store，確保一定有合法物件 */
+  const store = useMemo(() => {
+    const s = location.state?.store;
+    if (s && s.name) return s;
+    return mockStores[0] ?? { name: '', type: '', special_price: 0, original_price: 0, stock_quantity: 0, pickup_deadline: '' };
+  }, [location.state]);
 
   /* ── Firestore 商品（即時監聽 + 自動 seed） ── */
   const [fsProducts, setFsProducts] = useState([]);
   const [fsLoading,  setFsLoading]  = useState(true);
+  const [fsError,    setFsError]    = useState('');
   const didSeed = useRef(false);
+  const isMounted = useRef(true);
 
   useEffect(() => {
-    didSeed.current = false;
-    setFsLoading(true);
-    setFsProducts([]);
+    isMounted.current = true;
+    didSeed.current   = false;
+    if (isMounted.current) { setFsLoading(true); setFsProducts([]); setFsError(''); }
+
+    if (!store.name) { setFsLoading(false); return; }
 
     const q = query(collection(db, 'products'), where('storeId', '==', store.name));
+
     const unsub = onSnapshot(q, async (snap) => {
+      if (!isMounted.current) return;
+
       if (!snap.empty) {
-        /* 有資料 → 直接使用 */
         setFsProducts(snap.docs.map(d => ({ ...d.data(), _docId: d.id })));
         setFsLoading(false);
         return;
       }
+
+      /* 第一次偵測到空資料 → 自動 seed */
       if (!didSeed.current) {
-        /* 第一次偵測到空資料 → 自動 seed */
         didSeed.current = true;
         try {
           const seedItems = SEED_PRODUCTS[store.type] ?? [];
           for (const item of seedItems) {
+            if (!isMounted.current) return;
             await addDoc(collection(db, 'products'), {
               storeId:       store.name,
               name:          item.name,
@@ -85,76 +98,105 @@ export default function ProductPage() {
               isBox:         false,
             });
           }
-          /* 種驚喜包 */
-          if (store.special_price) {
+          if (store.special_price && isMounted.current) {
             await addDoc(collection(db, 'products'), {
               storeId:       store.name,
               name:          '驚喜包',
-              originalPrice: store.original_price  ?? Math.round(store.special_price * 2),
+              originalPrice: store.original_price ?? Math.round((store.special_price ?? 0) * 2),
               specialPrice:  store.special_price,
-              stock:         store.stock_quantity  ?? 5,
-              available:     store.is_available    !== false,
+              stock:         store.stock_quantity ?? 5,
+              available:     store.is_available !== false,
               isBox:         true,
             });
           }
-          /* onSnapshot 會自動再觸發，帶入剛 seed 的資料 */
-        } catch {
-          setFsLoading(false); /* seed 失敗時仍解除 loading */
+          /* onSnapshot 會自動再觸發帶入新資料 */
+        } catch (e) {
+          if (isMounted.current) {
+            setFsError('商品載入失敗，請重新整理');
+            setFsLoading(false);
+          }
         }
       } else {
-        /* seed 後仍空（不太可能）→ 解除 loading */
+        if (isMounted.current) setFsLoading(false);
+      }
+    }, (err) => {
+      if (isMounted.current) {
+        setFsError('無法連線至伺服器');
         setFsLoading(false);
       }
-    }, () => setFsLoading(false));
+    });
 
-    return () => unsub();
+    return () => { isMounted.current = false; unsub(); };
   }, [store.name]);
 
-  const boxProduct      = fsProducts.find(p => p.isBox);
+  /* ── 衍生商品資料（宣告必須在所有 useEffect 之前） ── */
+  const boxProduct      = fsProducts.find(p => p.isBox) ?? null;
   const regularProducts = fsProducts.filter(p => !p.isBox && p.available !== false);
-
-  /* ── 訂單狀態 ── */
-  const [boxQty,      setBoxQty]      = useState(0);
-  const [itemQtys,    setItemQtys]    = useState({});   // key: _docId
-  const [showConfirm, setShowConfirm] = useState(false);
-  const [showQR,      setShowQR]      = useState(false);
-  const [ordering,    setOrdering]    = useState(false);
-  const [orderId]                      = useState(genOrderId);
-
-  /* 切換 store 時重設數量 */
-  useEffect(() => { setBoxQty(0); setItemQtys({}); }, [store.name]);
-
-  /* 驚喜包庫存即時歸零時，同步把已選數量夾回上限 */
-  useEffect(() => {
-    if (boxMaxStock < boxQty) setBoxQty(Math.max(0, boxMaxStock));
-  }, [boxMaxStock]);
-
-  const adjustItem = (docId, delta) =>
-    setItemQtys(prev => ({ ...prev, [docId]: Math.max(0, (prev[docId] ?? 0) + delta) }));
 
   const boxPrice    = boxProduct?.specialPrice   ?? store.special_price   ?? 0;
   const boxOri      = boxProduct?.originalPrice  ?? store.original_price  ?? 0;
   const boxMaxStock = boxProduct?.stock          ?? store.stock_quantity  ?? 0;
-  const boxTotal    = boxPrice * boxQty;
-  const itemsTotal  = regularProducts.reduce((s, p) => s + p.specialPrice * (itemQtys[p._docId] ?? 0), 0);
-  const total       = boxTotal + itemsTotal;
 
-  const orderLines = useMemo(() => [
-    ...(boxQty > 0 ? [`🎁 驚喜包 ×${boxQty}  $${boxTotal}`] : []),
-    ...regularProducts
-      .filter(p => (itemQtys[p._docId] ?? 0) > 0)
-      .map(p => `${p.name} ×${itemQtys[p._docId]}  $${p.specialPrice * itemQtys[p._docId]}`),
-  ], [boxQty, boxTotal, regularProducts, itemQtys]);
+  /* ── 訂單狀態 ── */
+  const [boxQty,      setBoxQty]      = useState(0);
+  const [itemQtys,    setItemQtys]    = useState({});
+  const [showConfirm, setShowConfirm] = useState(false);
+  const [showQR,      setShowQR]      = useState(false);
+  const [ordering,    setOrdering]    = useState(false);
+  const [orderError,  setOrderError]  = useState('');
+  const [orderId]                      = useState(genOrderId);
 
-  const qrPayload = JSON.stringify({ orderId, store: store.name, items: orderLines, total });
+  /* 切換 store 時重設數量 */
+  useEffect(() => { setBoxQty(0); setItemQtys({}); setShowConfirm(false); setShowQR(false); }, [store.name]);
 
-  /* ── 確認預訂：扣庫存 + 寫訂單 ── */
+  /* 庫存歸零時夾回合法範圍（boxMaxStock 已在上方宣告） */
+  useEffect(() => {
+    if (boxMaxStock >= 0 && boxQty > boxMaxStock) {
+      setBoxQty(Math.max(0, boxMaxStock));
+    }
+  }, [boxMaxStock]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const adjustItem = (docId, delta) =>
+    setItemQtys(prev => ({ ...prev, [docId]: Math.max(0, (prev[docId] ?? 0) + delta) }));
+
+  const boxTotal   = boxPrice * boxQty;
+  const itemsTotal = regularProducts.reduce((s, p) => s + (p.specialPrice ?? 0) * (itemQtys[p._docId] ?? 0), 0);
+  const total      = boxTotal + itemsTotal;
+
+  const orderLines = useMemo(() => {
+    try {
+      return [
+        ...(boxQty > 0 ? [`🎁 驚喜包 ×${boxQty}  $${boxTotal}`] : []),
+        ...regularProducts
+          .filter(p => (itemQtys[p._docId] ?? 0) > 0)
+          .map(p => `${p.name ?? '商品'} ×${itemQtys[p._docId] ?? 0}  $${(p.specialPrice ?? 0) * (itemQtys[p._docId] ?? 0)}`),
+      ];
+    } catch {
+      return [];
+    }
+  }, [boxQty, boxTotal, regularProducts, itemQtys]);
+
+  const qrPayload = useMemo(() => {
+    try {
+      return JSON.stringify({ orderId, store: store.name, items: orderLines, total });
+    } catch {
+      return JSON.stringify({ orderId });
+    }
+  }, [orderId, store.name, orderLines, total]);
+
+  /* ── 確認預訂 ── */
   const handleConfirm = async () => {
+    setOrderError('');
     setShowConfirm(false);
     setOrdering(true);
-    const currentUser = JSON.parse(localStorage.getItem('inochi_user') || 'null');
+
+    const currentUser = (() => {
+      try { return JSON.parse(localStorage.getItem('inochi_user') || 'null'); } catch { return null; }
+    })();
     const now = new Date();
+
     try {
+      /* 扣庫存 */
       if (boxQty > 0 && boxProduct?._docId) {
         await updateDoc(doc(db, 'products', boxProduct._docId), {
           stock: Math.max(0, (boxProduct.stock ?? 0) - boxQty),
@@ -168,13 +210,14 @@ export default function ProductPage() {
           });
         }
       }
+      /* 寫訂單 */
       await addDoc(collection(db, 'orders'), {
         orderId,
         studentId:   currentUser?.studentId || 'guest',
         studentName: currentUser?.name      || currentUser?.studentId || 'guest',
         storeId:     store.name,
         store:       store.name,
-        storeType:   store.type,
+        storeType:   store.type ?? '',
         items:       orderLines,
         total,
         deadline:    store.pickup_deadline ?? '',
@@ -182,29 +225,40 @@ export default function ProductPage() {
         createdAt:   now.toISOString(),
         date: `${String(now.getMonth() + 1).padStart(2, '0')}/${String(now.getDate()).padStart(2, '0')}`,
       });
-    } catch { /* silent */ } finally {
-      setOrdering(false);
+    } catch (e) {
+      /* Firestore 失敗仍顯示 QR（本地確認），記錄錯誤 */
+      setOrderError('訂單寫入失敗，請截圖 QR Code 自行記錄');
+    } finally {
+      if (isMounted.current) setOrdering(false);
     }
-    setShowQR(true);
+
+    /* 無論 Firestore 成功與否都顯示 QR */
+    if (isMounted.current) setShowQR(true);
   };
 
-  const displayDeadline = store.pickup_deadline ?? '—';
-
+  /* ─────────────── JSX ─────────────── */
   return (
     <div className="flex flex-col h-full bg-gray-50">
-      {/* ── Header ── */}
+      {/* Header */}
       <div className="bg-white px-4 py-3 flex items-center gap-3 shadow-sm shrink-0">
         <button onClick={() => navigate(-1)}
           className="w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 text-gray-600">←</button>
         <div className="flex-1 min-w-0">
-          <h1 className="text-base font-bold text-gray-800 truncate">{store.name}</h1>
-          <p className="text-xs text-gray-400">截止 {displayDeadline}</p>
+          <h1 className="text-base font-bold text-gray-800 truncate">{store.name || '商品頁面'}</h1>
+          <p className="text-xs text-gray-400">截止 {store.pickup_deadline || '—'}</p>
         </div>
         <span className="text-2xl">{TYPE_EMOJI[store.type] || '🏪'}</span>
       </div>
 
-      {/* ── Scrollable body ── */}
+      {/* Body */}
       <div className="flex-1 overflow-y-auto">
+        {/* Firestore 錯誤 */}
+        {fsError && (
+          <div className="m-4 bg-red-50 border border-red-100 rounded-2xl px-4 py-3 flex items-center gap-2 text-sm text-red-600">
+            <span>⚠️</span>{fsError}
+          </div>
+        )}
+
         {fsLoading ? (
           <div className="flex flex-col items-center justify-center h-48 text-gray-400 text-sm gap-2">
             <div className="text-3xl animate-pulse">🍱</div>
@@ -212,7 +266,7 @@ export default function ProductPage() {
           </div>
         ) : (
           <>
-            {/* ── 驚喜包 ── */}
+            {/* 驚喜包 */}
             <div className="m-4">
               <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">惜食驚喜包</p>
               <div className="bg-gradient-to-br from-orange-400 via-amber-400 to-yellow-400 rounded-3xl p-5 shadow-lg">
@@ -222,7 +276,7 @@ export default function ProductPage() {
                   <div className="flex items-baseline justify-center gap-2 mt-1">
                     <span className="text-white text-3xl font-black">${boxPrice}</span>
                     {boxOri > 0 && <span className="text-white/60 text-sm line-through">${boxOri}</span>}
-                    {boxOri > boxPrice && (
+                    {boxOri > boxPrice && boxPrice > 0 && (
                       <span className="bg-white/25 text-white text-xs font-bold px-2 py-0.5 rounded-full">
                         -{Math.round((1 - boxPrice / boxOri) * 100)}%
                       </span>
@@ -233,27 +287,24 @@ export default function ProductPage() {
                       已售完
                     </div>
                   ) : (
-                    <div className="text-white/60 text-xs mt-1">
-                      剩餘庫存：{boxMaxStock} 份
-                    </div>
+                    <div className="text-white/60 text-xs mt-1">剩餘庫存：{boxMaxStock} 份</div>
                   )}
                 </div>
                 <div className="flex items-center justify-center gap-6 mt-3">
                   <button onClick={() => setBoxQty(q => Math.max(0, q - 1))}
-                    disabled={boxMaxStock === 0}
+                    disabled={boxMaxStock === 0 || boxQty === 0}
                     className="w-10 h-10 rounded-full bg-white/25 text-white text-2xl font-bold flex items-center justify-center active:scale-90 transition-transform disabled:opacity-40">−</button>
                   <span className="text-white text-3xl font-black w-10 text-center">{boxQty}</span>
                   <button onClick={() => setBoxQty(q => Math.min(boxMaxStock, q + 1))}
-                    disabled={boxMaxStock === 0}
+                    disabled={boxMaxStock === 0 || boxQty >= boxMaxStock}
                     className="w-10 h-10 rounded-full bg-white/25 text-white text-2xl font-bold flex items-center justify-center active:scale-90 transition-transform disabled:opacity-40">+</button>
                 </div>
               </div>
             </div>
 
-            {/* ── 一般商品 ── */}
+            {/* 一般商品 */}
             <div className="mx-4 mb-4">
               <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">單品加購</p>
-
               {regularProducts.length === 0 ? (
                 <div className="bg-white rounded-2xl shadow-sm px-4 py-8 text-center">
                   <div className="text-4xl mb-2">🛒</div>
@@ -264,10 +315,9 @@ export default function ProductPage() {
                 <div className="bg-white rounded-2xl shadow-sm divide-y divide-gray-50">
                   {regularProducts.map(p => {
                     const qty  = itemQtys[p._docId] ?? 0;
-                    const sold = p.stock <= 0;
+                    const sold = (p.stock ?? 0) <= 0;
                     return (
-                      <div key={p._docId}
-                        className={`flex items-center px-4 py-3.5 gap-3 ${sold ? 'opacity-50' : ''}`}>
+                      <div key={p._docId} className={`flex items-center px-4 py-3.5 gap-3 ${sold ? 'opacity-50' : ''}`}>
                         <div className="w-10 h-10 rounded-xl bg-orange-50 flex items-center justify-center text-2xl">
                           {TYPE_EMOJI[store.type] || '🍽️'}
                         </div>
@@ -275,18 +325,18 @@ export default function ProductPage() {
                           <div className="text-sm font-semibold text-gray-800 truncate">{p.name}</div>
                           <div className="flex items-center gap-2">
                             <span className="text-sm font-bold text-primary">${p.specialPrice}</span>
-                            {p.originalPrice > p.specialPrice && (
+                            {(p.originalPrice ?? 0) > (p.specialPrice ?? 0) && (
                               <span className="text-xs text-gray-300 line-through">${p.originalPrice}</span>
                             )}
-                            <span className="text-xs text-gray-300">剩 {p.stock}</span>
+                            <span className="text-xs text-gray-300">剩 {p.stock ?? 0}</span>
                           </div>
                         </div>
                         <div className="flex items-center gap-2 shrink-0">
-                          <button onClick={() => adjustItem(p._docId, -1)} disabled={sold}
+                          <button onClick={() => adjustItem(p._docId, -1)} disabled={sold || qty === 0}
                             className={`w-7 h-7 rounded-full text-sm font-bold flex items-center justify-center transition-all
-                              ${qty > 0 ? 'bg-primary text-white' : 'border border-gray-200 text-gray-300'}`}>−</button>
+                              ${qty > 0 && !sold ? 'bg-primary text-white' : 'border border-gray-200 text-gray-300'}`}>−</button>
                           <span className="w-5 text-center text-sm font-bold text-gray-700">{qty}</span>
-                          <button onClick={() => adjustItem(p._docId, 1)} disabled={sold || qty >= p.stock}
+                          <button onClick={() => adjustItem(p._docId, 1)} disabled={sold || qty >= (p.stock ?? 0)}
                             className="w-7 h-7 rounded-full bg-primary text-white text-sm font-bold flex items-center justify-center disabled:opacity-40">+</button>
                         </div>
                       </div>
@@ -300,7 +350,7 @@ export default function ProductPage() {
         )}
       </div>
 
-      {/* ── Order bar ── */}
+      {/* Order bar */}
       <div className="shrink-0 bg-white border-t border-gray-100 px-4 py-3 shadow-xl">
         <div className="flex items-center justify-between">
           <div>
@@ -317,16 +367,21 @@ export default function ProductPage() {
         </div>
       </div>
 
-      {/* ── Confirm dialog ── */}
+      {/* Confirm dialog */}
       {showConfirm && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50"
+        <div className="fixed inset-0 z-50 flex items-end justify-center"
+          style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}
           onClick={() => setShowConfirm(false)}>
           <div className="bg-white rounded-t-3xl w-full max-w-md p-6"
             onClick={e => e.stopPropagation()}>
             <div className="w-10 h-1 bg-gray-200 rounded-full mx-auto mb-5" />
             <h3 className="text-lg font-bold text-gray-800 mb-4">確認預訂</h3>
             <div className="bg-gray-50 rounded-2xl p-4 mb-4 space-y-1.5">
-              {orderLines.map((line, i) => <div key={i} className="text-sm text-gray-700">{line}</div>)}
+              {orderLines.length === 0 ? (
+                <div className="text-sm text-gray-400">請先選擇商品</div>
+              ) : (
+                orderLines.map((line, i) => <div key={i} className="text-sm text-gray-700">{line}</div>)
+              )}
               <div className="border-t border-gray-200 pt-2 mt-2 flex justify-between font-bold text-gray-900">
                 <span>總計</span>
                 <span className="text-primary text-lg">${total}</span>
@@ -336,7 +391,7 @@ export default function ProductPage() {
               <span className="text-lg shrink-0">⚠️</span>
               <p className="text-sm text-amber-800 leading-relaxed">
                 若事後<strong>取消訂單</strong>，將扣除 <strong>15 信用積點</strong>。
-                請確保能於 <strong>{store.pickup_deadline ?? '截止時間'}</strong> 前到店取餐。
+                請確保能於 <strong>{store.pickup_deadline || '截止時間'}</strong> 前到店取餐。
               </p>
             </div>
             <div className="flex gap-3">
@@ -349,20 +404,30 @@ export default function ProductPage() {
         </div>
       )}
 
-      {/* ── QR Code modal ── */}
+      {/* QR Code modal */}
       {showQR && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ backgroundColor: 'rgba(0,0,0,0.7)' }}>
           <div className="bg-white rounded-3xl p-6 w-full max-w-xs text-center shadow-2xl">
             <div className="text-4xl mb-2">🎉</div>
             <h3 className="text-xl font-black text-gray-800 mb-1">預訂成功！</h3>
-            <p className="text-sm text-gray-400 mb-5">出示 QR Code 給店家掃描取餐</p>
+            <p className="text-sm text-gray-400 mb-1">出示 QR Code 給店家掃描取餐</p>
+            {orderError && (
+              <p className="text-xs text-red-500 mb-3">{orderError}</p>
+            )}
             <div className="flex justify-center p-3 bg-gray-50 rounded-2xl mb-4">
-              <QRCodeSVG value={qrPayload} size={190} fgColor="#1f2937" level="M" />
+              {qrPayload ? (
+                <QRCodeSVG value={qrPayload} size={190} fgColor="#1f2937" level="M" />
+              ) : (
+                <div className="w-48 h-48 bg-gray-100 rounded-xl flex items-center justify-center text-gray-400 text-sm">
+                  QR Code 產生失敗
+                </div>
+              )}
             </div>
             <div className="text-xs text-gray-400 mb-0.5">訂單編號</div>
             <div className="text-sm font-mono font-bold text-gray-700 mb-4">{orderId}</div>
             <div className="bg-orange-50 rounded-xl px-4 py-2.5 text-sm text-gray-600 mb-5">
-              {store.name} · 截止 <strong>{store.pickup_deadline ?? '—'}</strong> 取餐
+              {store.name} · 截止 <strong>{store.pickup_deadline || '—'}</strong> 取餐
             </div>
             <button onClick={() => { setShowQR(false); navigate('/'); }}
               className="w-full py-3 bg-primary text-white font-bold rounded-2xl">返回地圖</button>
