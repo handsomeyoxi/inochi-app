@@ -124,6 +124,11 @@ export default function ProductPage() {
   /* 切換 store 時重設數量 */
   useEffect(() => { setBoxQty(0); setItemQtys({}); }, [store.name]);
 
+  /* 驚喜包庫存即時歸零時，同步把已選數量夾回上限 */
+  useEffect(() => {
+    if (boxMaxStock < boxQty) setBoxQty(Math.max(0, boxMaxStock));
+  }, [boxMaxStock]);
+
   const adjustItem = (docId, delta) =>
     setItemQtys(prev => ({ ...prev, [docId]: Math.max(0, (prev[docId] ?? 0) + delta) }));
 
@@ -223,13 +228,20 @@ export default function ProductPage() {
                       </span>
                     )}
                   </div>
-                  <div className="text-white/60 text-xs mt-1">
-                    剩餘庫存：{boxMaxStock} 份
-                  </div>
+                  {boxMaxStock === 0 ? (
+                    <div className="mt-2 inline-block bg-white/30 text-white text-sm font-bold px-4 py-1 rounded-full">
+                      已售完
+                    </div>
+                  ) : (
+                    <div className="text-white/60 text-xs mt-1">
+                      剩餘庫存：{boxMaxStock} 份
+                    </div>
+                  )}
                 </div>
                 <div className="flex items-center justify-center gap-6 mt-3">
                   <button onClick={() => setBoxQty(q => Math.max(0, q - 1))}
-                    className="w-10 h-10 rounded-full bg-white/25 text-white text-2xl font-bold flex items-center justify-center active:scale-90 transition-transform">−</button>
+                    disabled={boxMaxStock === 0}
+                    className="w-10 h-10 rounded-full bg-white/25 text-white text-2xl font-bold flex items-center justify-center active:scale-90 transition-transform disabled:opacity-40">−</button>
                   <span className="text-white text-3xl font-black w-10 text-center">{boxQty}</span>
                   <button onClick={() => setBoxQty(q => Math.min(boxMaxStock, q + 1))}
                     disabled={boxMaxStock === 0}

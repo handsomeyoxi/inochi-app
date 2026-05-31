@@ -3,7 +3,7 @@ import { MapContainer, TileLayer, Marker, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { useNavigate } from 'react-router-dom';
-import { collection, getDocs } from 'firebase/firestore';
+import { collection, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebase';
 import mockStores from '../data/mockStores';
 
@@ -35,19 +35,24 @@ export default function MapPage() {
   const [search,   setSearch]   = useState('');
   const [filter,   setFilter]   = useState('全部');
   const [selected, setSelected] = useState(null);
-  const [stockMap, setStockMap] = useState({}); // storeName → total stock
+  const [stockMap,    setStockMap]    = useState({}); // storeName → total stock
+  const [boxStockMap, setBoxStockMap] = useState({}); // storeName → box stock
 
-  /* 從 Firestore 讀取各店庫存 */
+  /* 即時監聽所有店家庫存 */
   useEffect(() => {
-    getDocs(collection(db, 'products')).then(snap => {
-      const map = {};
+    const unsub = onSnapshot(collection(db, 'products'), (snap) => {
+      const total = {};
+      const box   = {};
       snap.docs.forEach(d => {
         const p = d.data();
-        if (!map[p.storeId]) map[p.storeId] = 0;
-        if (p.available !== false) map[p.storeId] += (p.stock ?? 0);
+        if (!total[p.storeId]) total[p.storeId] = 0;
+        if (p.available !== false) total[p.storeId] += (p.stock ?? 0);
+        if (p.isBox) box[p.storeId] = p.stock ?? 0;
       });
-      setStockMap(map);
-    }).catch(() => {});
+      setStockMap(total);
+      setBoxStockMap(box);
+    }, () => {});
+    return () => unsub();
   }, []);
 
   /* 判斷一間店是否有貨（優先 Firestore，fallback mockStore） */
@@ -155,23 +160,32 @@ export default function MapPage() {
             </div>
 
             {/* Price / Stock / Deadline */}
-            <div className="grid grid-cols-3 gap-2 mb-4">
-              {[
-                { label: '原價', value: `$${selected.original_price}`, sub: true },
-                { label: '惜食價', value: `$${selected.special_price}`, accent: true },
-                { label: '剩餘數量', value: `${selected.stock_quantity} 份` },
-              ].map(({ label, value, sub, accent }) => (
-                <div key={label} className="bg-orange-50 rounded-xl p-2.5 text-center">
-                  <div className="text-[10px] text-gray-500 mb-0.5">{label}</div>
-                  <div
-                    className={`text-sm font-bold
-                      ${accent ? 'text-primary text-base' : sub ? 'text-gray-400 line-through' : 'text-gray-700'}`}
-                  >
-                    {value}
-                  </div>
+            {(() => {
+              const liveStock = boxStockMap[selected.name] ?? selected.stock_quantity ?? 0;
+              const soldOut   = liveStock === 0;
+              return (
+                <div className="grid grid-cols-3 gap-2 mb-4">
+                  {[
+                    { label: '原價',   value: `$${selected.original_price}`, sub: true   },
+                    { label: '惜食價', value: `$${selected.special_price}`,  accent: true },
+                    { label: '剩餘數量',
+                      value: soldOut ? '已售完' : `${liveStock} 份`,
+                      sold: soldOut },
+                  ].map(({ label, value, sub, accent, sold }) => (
+                    <div key={label} className="bg-orange-50 rounded-xl p-2.5 text-center">
+                      <div className="text-[10px] text-gray-500 mb-0.5">{label}</div>
+                      <div className={`text-sm font-bold
+                        ${accent ? 'text-primary text-base'
+                          : sub  ? 'text-gray-400 line-through'
+                          : sold ? 'text-red-500'
+                          : 'text-gray-700'}`}>
+                        {value}
+                      </div>
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
+              );
+            })()}
 
             <div className="flex items-center gap-2 text-sm text-gray-500 mb-4">
               <span>⏰</span>
