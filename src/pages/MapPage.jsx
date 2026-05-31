@@ -83,7 +83,7 @@ export default function MapPage() {
       {/* ── Map ── */}
       <MapContainer
         center={[24.9675, 121.1941]}
-        zoom={16}
+        zoom={17}
         className="w-full h-full"
         zoomControl={false}
       >
