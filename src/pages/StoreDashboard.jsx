@@ -181,8 +181,14 @@ function ProductCard({ product, onUpdate, onStockAdjust, onDelete }) {
   );
 }
 
+const STATUS_CLS = {
+  待取餐: 'bg-orange-100 text-orange-700',
+  已完成: 'bg-green-100 text-green-700',
+  未取餐: 'bg-red-100 text-red-600',
+};
+
 /* ── Order card ── */
-function OrderCard({ order, onComplete }) {
+function OrderCard({ order, onComplete, onNoShow }) {
   const timeStr = order.createdAt
     ? new Date(order.createdAt).toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit', hour12: false })
     : '';
@@ -196,7 +202,7 @@ function OrderCard({ order, onComplete }) {
           </div>
         </div>
         <span className={`text-xs font-bold px-2.5 py-1 rounded-full shrink-0
-          ${order.status === '待取餐' ? 'bg-orange-100 text-orange-700' : 'bg-green-100 text-green-700'}`}>
+          ${STATUS_CLS[order.status] ?? 'bg-gray-100 text-gray-500'}`}>
           {order.status}
         </span>
       </div>
@@ -210,12 +216,20 @@ function OrderCard({ order, onComplete }) {
       <div className="flex items-center justify-between">
         <div className="text-lg font-black text-primary">${order.total}</div>
         {order.status === '待取餐' && (
-          <button
-            onClick={() => onComplete(order.orderId)}
-            className="bg-green-500 hover:bg-green-600 text-white text-xs font-bold px-4 py-2 rounded-xl transition-colors"
-          >
-            確認取餐 ✓
-          </button>
+          <div className="flex gap-2">
+            <button
+              onClick={() => onNoShow(order.orderId)}
+              className="bg-red-500 hover:bg-red-600 text-white text-xs font-bold px-3 py-2 rounded-xl transition-colors"
+            >
+              未取餐
+            </button>
+            <button
+              onClick={() => onComplete(order.orderId)}
+              className="bg-green-500 hover:bg-green-600 text-white text-xs font-bold px-3 py-2 rounded-xl transition-colors"
+            >
+              確認取餐 ✓
+            </button>
+          </div>
         )}
       </div>
     </div>
@@ -361,6 +375,54 @@ export default function StoreDashboard({ storeAuth, onLogout }) {
   };
 
   const handleConfirmPickup = () => doConfirmPickup(confirmInput.trim());
+
+  /* ── 未取餐：扣 15 積分 + 寫 points_log + 可能停權 ── */
+  const [noShowTarget, setNoShowTarget] = useState(null); // orderId string
+  const [noShowing,    setNoShowing]    = useState(false);
+
+  const doMarkNoShow = async (oid) => {
+    if (!oid) return;
+    setNoShowing(true);
+    try {
+      const orderSnap = await getDocs(query(collection(db, 'orders'), where('orderId', '==', oid)));
+      if (orderSnap.empty) return;
+      const orderDoc  = orderSnap.docs[0];
+      const orderData = orderDoc.data();
+
+      if (orderData.status !== '待取餐') return;
+
+      /* 1. 更新訂單狀態 */
+      await updateDoc(orderDoc.ref, { status: '未取餐' });
+
+      /* 2. 扣除學生 15 積分，低於 60 自動停權 */
+      const userSnap = await getDocs(query(collection(db, 'users'), where('studentId', '==', orderData.studentId)));
+      if (!userSnap.empty) {
+        const userDoc    = userSnap.docs[0];
+        const curScore   = userDoc.data().creditScore ?? 100;
+        const newScore   = Math.max(0, curScore - 15);
+        const patch      = { creditScore: newScore };
+        if (newScore < 60) patch.suspended = true;
+        await updateDoc(userDoc.ref, patch);
+      }
+
+      /* 3. 新增積分明細 */
+      const now = new Date();
+      await addDoc(collection(db, 'points_log'), {
+        studentId: orderData.studentId,
+        desc:      `未取餐扣分 - ${orderData.store}`,
+        pts:       -15,
+        date:      `${String(now.getMonth() + 1).padStart(2, '0')}/${String(now.getDate()).padStart(2, '0')}`,
+        createdAt: now.toISOString(),
+      });
+
+      setNoShowTarget(null);
+      setConfirmMsg({ type: 'success', text: `已標記未取餐，扣除 ${orderData.studentName || orderData.studentId} 15 積分` });
+    } catch {
+      setConfirmMsg({ type: 'error', text: '操作失敗，請重試' });
+    } finally {
+      setNoShowing(false);
+    }
+  };
 
   const handleUpdate = async (docId, patch) => {
     await updateDoc(doc(db, 'products', docId), patch);
@@ -515,11 +577,52 @@ export default function StoreDashboard({ storeAuth, onLogout }) {
               </div>
             )}
             {!ordersLoading && todayOrders.map((o) => (
-              <OrderCard key={o.orderId} order={o} onComplete={(oid) => doConfirmPickup(oid)} />
+              <OrderCard
+                key={o.orderId}
+                order={o}
+                onComplete={(oid) => doConfirmPickup(oid)}
+                onNoShow={(oid) => setNoShowTarget(oid)}
+              />
             ))}
           </>
         )}
       </div>
+
+      {/* ── 未取餐確認對話框 ── */}
+      {noShowTarget && (
+        <div className="fixed inset-0 z-[3000] flex items-center justify-center p-4"
+          style={{ backgroundColor: 'rgba(0,0,0,0.6)' }}
+          onClick={() => !noShowing && setNoShowTarget(null)}>
+          <div className="bg-white rounded-3xl p-6 w-full max-w-xs shadow-2xl text-center"
+            onClick={e => e.stopPropagation()}>
+            <div className="text-4xl mb-3">🚫</div>
+            <h3 className="text-base font-black text-gray-800 mb-2">確認標記為未取餐？</h3>
+            <p className="text-sm text-gray-500 mb-1 leading-relaxed">
+              此操作將扣除該學生
+              <strong className="text-red-600"> 15 積分</strong>
+            </p>
+            <p className="text-xs text-gray-400 mb-5">
+              若積分低於 60 分，帳號將自動停權
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setNoShowTarget(null)}
+                disabled={noShowing}
+                className="flex-1 py-3 border border-gray-200 text-gray-600 text-sm font-semibold rounded-2xl disabled:opacity-50"
+              >
+                取消
+              </button>
+              <button
+                onClick={() => doMarkNoShow(noShowTarget)}
+                disabled={noShowing}
+                className="flex-1 py-3 bg-red-500 hover:bg-red-600 text-white text-sm font-bold rounded-2xl disabled:opacity-50 transition-colors"
+              >
+                {noShowing ? '處理中…' : '確認扣分'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
