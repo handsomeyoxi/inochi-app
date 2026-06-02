@@ -16,8 +16,9 @@ function ArcGauge({ score }) {
   const r = (size - sw) / 2;
   const C = 2 * Math.PI * r;
   const arc = C * 0.75;
-  const filled = arc * Math.min(score, 100) / 100;
-  const color = score >= 80 ? '#22c55e' : score >= 60 ? '#f59e0b' : '#ef4444';
+  const displayScore = Math.min(score, 200);
+  const filled = arc * displayScore / 200;
+  const color = displayScore >= 160 ? '#22c55e' : displayScore >= 120 ? '#f59e0b' : '#ef4444';
   const cx = size / 2;
   const cy = size / 2;
   return (
@@ -31,7 +32,7 @@ function ArcGauge({ score }) {
         style={{ transition: 'stroke-dasharray 0.9s cubic-bezier(.4,0,.2,1)' }} />
       <text x={cx} y={cy - 8} textAnchor="middle" dominantBaseline="middle"
         fontSize="46" fontWeight="800" fill={color} fontFamily="system-ui, sans-serif">
-        {score}
+        {displayScore}
       </text>
       <text x={cx} y={cy + 26} textAnchor="middle"
         fontSize="13" fill="#9ca3af" fontFamily="system-ui, sans-serif">
@@ -121,11 +122,11 @@ export default function ProfilePage({ user, onLogout }) {
         <div className="flex flex-col items-center">
           <ArcGauge score={creditScore} />
           <div className={`text-sm font-bold mt-0.5
-            ${creditScore >= 80 ? 'text-green-600' : creditScore >= 60 ? 'text-yellow-600' : 'text-red-600'}`}>
-            {creditScore >= 80 ? '信用良好 ✨' : creditScore >= 60 ? '信用普通' : '帳號停權 🚫'}
+            ${creditScore >= 160 ? 'text-green-600' : creditScore >= 120 ? 'text-yellow-600' : creditScore >= 60 ? 'text-orange-600' : 'text-red-600'}`}>
+            {creditScore >= 160 ? '信用優秀 ⭐' : creditScore >= 120 ? '信用良好 ✨' : creditScore >= 60 ? '信用普通' : '帳號停權 🚫'}
           </div>
           <p className="text-xs text-gray-400 mt-1 text-center">
-            成功取餐 +10 · 棄單 −15 · 低於 60 停權
+            上限 200 分 · 成功取餐 +10 · 棄單 −15 · 低於 60 停權
           </p>
         </div>
 

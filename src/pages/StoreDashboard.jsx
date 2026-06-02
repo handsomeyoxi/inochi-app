@@ -320,19 +320,25 @@ export default function StoreDashboard({ storeAuth, onLogout }) {
     return () => { if (unsub) unsub(); };
   }, [storeAuth.name]);
 
-  /* ── 即時監聽該店家訂單 ── */
+  /* ── 即時監聽該店家訂單（篩選今日） ── */
   useEffect(() => {
+    if (!storeAuth?.name) { setOrdersLoading(false); return; }
+
     const q = query(
       collection(db, 'orders'),
       where('storeId', '==', storeAuth.name),
       orderBy('createdAt', 'desc')
     );
-    const unsub = onSnapshot(q,
-      (snap) => { setOrders(snap.docs.map((d) => d.data())); setOrdersLoading(false); },
-      () => setOrdersLoading(false)
-    );
+    const unsub = onSnapshot(q, (snap) => {
+      const today = new Date().toISOString().slice(0, 10);
+      const rows = snap.docs
+        .map(d => d.data())
+        .filter(o => o.createdAt?.startsWith(today));
+      setOrders(rows);
+      setOrdersLoading(false);
+    }, () => setOrdersLoading(false));
     return () => unsub();
-  }, [storeAuth.name]);
+  }, [storeAuth?.name]);
 
   /* ── 確認取餐核心邏輯 ── */
   const doConfirmPickup = async (oid) => {
