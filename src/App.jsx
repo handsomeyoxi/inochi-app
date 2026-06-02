@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { BrowserRouter, Routes, Route, NavLink, useLocation } from 'react-router-dom';
 import MapPage from './pages/MapPage';
 import ProductPage from './pages/ProductPage';
+import CartPage from './pages/CartPage';
 import ProfilePage from './pages/ProfilePage';
 import LoginPage from './pages/LoginPage';
 import StoreLoginPage from './pages/StoreLoginPage';
@@ -9,9 +10,9 @@ import StoreDashboard from './pages/StoreDashboard';
 import AdminPage from './pages/AdminPage';
 
 const NAV = [
-  { to: '/',         end: true,  icon: '🗺️',  label: '地圖' },
-  { to: '/products', end: false, icon: '🛍️',  label: '商品' },
-  { to: '/profile',  end: false, icon: '👤',  label: '我的' },
+  { to: '/',        end: true,  icon: '🗺️', label: '地圖' },
+  { to: '/cart',    end: false, icon: '🛒', label: '購物車' },
+  { to: '/profile', end: false, icon: '👤', label: '我的' },
 ];
 
 function Shell({ user, onLogout }) {
@@ -21,6 +22,7 @@ function Shell({ user, onLogout }) {
         <Routes>
           <Route path="/"         element={<MapPage />} />
           <Route path="/products" element={<ProductPage />} />
+          <Route path="/cart"     element={<CartPage />} />
           <Route path="/profile"  element={<ProfilePage user={user} onLogout={onLogout} />} />
           <Route path="*"         element={<MapPage />} />
         </Routes>
