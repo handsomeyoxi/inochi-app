@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { collection, addDoc, getDocs, query, where } from 'firebase/firestore';
+import { collection, addDoc, getDocs, query, where, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebase';
 
 const TYPE_EMOJI = { '壽司': '🍣', '飲料': '🧋', '麵包': '🍞', '便當': '🍱', '關東煮': '🍢' };
@@ -49,21 +49,22 @@ export default function StoreLoginPage({ onLogin }) {
 
   /* 註冊表單 */
   const [regForm, setRegForm] = useState({
-    name: '', username: '', password: '', type: '壽司',
+    name: '', username: '', password: '', type: '',
     address: '', phone: '', businessHours: '', email: '',
-    lat: DEFAULT_LAT, lng: DEFAULT_LNG,
+    lat: '', lng: '',
   });
   const setR = (k) => (e) => setRegForm((f) => ({ ...f, [k]: e.target.value }));
 
-  /* 從 Firestore 讀取所有店家 */
+  /* 即時監聽 Firestore 所有店家 */
   useEffect(() => {
-    (async () => {
-      try {
-        const snap = await getDocs(collection(db, 'stores'));
-        const stores = snap.docs.map(d => d.data()).sort((a, b) => (a.name > b.name ? 1 : -1));
-        setAllStores(stores);
-      } catch { /* 空列表 */ }
-    })();
+    const unsub = onSnapshot(collection(db, 'stores'), (snap) => {
+      const stores = snap.docs.map(d => d.data()).sort((a, b) => (a.name > b.name ? 1 : -1));
+      setAllStores(stores);
+      console.log('🏪 店家下拉選單已更新:', stores.length, '間店家');
+    }, (err) => {
+      console.error('❌ 監聽店家失敗:', err);
+    });
+    return () => unsub();
   }, []);
 
   /* ── 登入 ── */
@@ -120,7 +121,7 @@ export default function StoreLoginPage({ onLogin }) {
         lng:           lng,
         registeredAt:  new Date().toISOString(),
       });
-      setRegForm({ name: '', username: '', password: '', type: '壽司', address: '', phone: '', businessHours: '', email: '', lat: DEFAULT_LAT, lng: DEFAULT_LNG });
+      setRegForm({ name: '', username: '', password: '', type: '', address: '', phone: '', businessHours: '', email: '', lat: '', lng: '' });
       setTab('login');
       setSuccess('店家帳號建立成功！請登入');
     } catch {
@@ -182,6 +183,9 @@ export default function StoreLoginPage({ onLogin }) {
                     </option>
                   ))}
                 </select>
+                <p className="text-xs text-gray-400 mt-2 text-center">或直接輸入帳號</p>
+                <input type="text" className={inputCls} placeholder="例：sushi01"
+                  value={loginForm.username} onChange={setL('username')} onKeyDown={handleKey} />
               </Field>
               <Field label="密碼">
                 <input type="password" className={inputCls} placeholder="••••••••"
