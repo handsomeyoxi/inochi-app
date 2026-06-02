@@ -9,7 +9,11 @@ import { db } from '../firebase';
 const TYPE_EMOJI = { '壽司': '🍣', '飲料': '🧋', '麵包': '🍞', '便當': '🍱', '關東煮': '🍢' };
 
 function genOrderId() {
-  return 'ORD-' + Math.random().toString(36).substring(2, 10).toUpperCase();
+  const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+  let code = 'ORD-';
+  for (let i = 0; i < 5; i++) code += letters[Math.floor(Math.random() * letters.length)];
+  for (let i = 0; i < 3; i++) code += Math.floor(Math.random() * 10);
+  return code;
 }
 
 function QRModal({ order, onClose }) {

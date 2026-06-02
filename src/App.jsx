@@ -45,6 +45,28 @@ async function initializeStores() {
   }
 }
 
+/* 修復超過 200 分的積分 */
+async function fixCreditScores() {
+  console.log('💯 開始檢查並修復積分上限...');
+  try {
+    const snap = await getDocs(collection(db, 'users'));
+    const updates = [];
+    snap.docs.forEach(docSnap => {
+      const data = docSnap.data();
+      if (data.creditScore && data.creditScore > 200) {
+        updates.push(updateDoc(docSnap.ref, { creditScore: 200 }));
+        console.log(`📌 修復 ${data.name || data.studentId} 的積分：${data.creditScore} → 200`);
+      }
+    });
+    if (updates.length > 0) {
+      await Promise.all(updates);
+      console.log(`✅ 積分修復完成：${updates.length} 位使用者`);
+    }
+  } catch (err) {
+    console.error('❌ 修復積分失敗:', err);
+  }
+}
+
 const NAV = [
   { to: '/',        end: true,  icon: '🗺️', label: '地圖' },
   { to: '/cart',    end: false, icon: '🛒', label: '購物車' },
@@ -96,6 +118,7 @@ function AppContent() {
   useEffect(() => {
     initializeStores();
     fillMissingCoordinates();
+    fixCreditScores();
   }, []);
 
   /* Admin is always accessible regardless of other auth state */

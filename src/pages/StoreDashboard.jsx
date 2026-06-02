@@ -340,14 +340,44 @@ export default function StoreDashboard({ storeAuth, onLogout }) {
     return () => unsub();
   }, [storeAuth?.name]);
 
+  /* ── 搜尋訂單（根據後3碼） ── */
+  const [orderPreview, setOrderPreview] = useState(null);
+  const [searchingOrder, setSearchingOrder] = useState(false);
+
+  const handleSearchOrder = async (lastThree) => {
+    if (!lastThree || lastThree.length !== 3) {
+      setOrderPreview(null);
+      return;
+    }
+    setSearchingOrder(true);
+    try {
+      const orderSnap = await getDocs(collection(db, 'orders'));
+      const matches = orderSnap.docs
+        .map(d => d.data())
+        .filter(o => o.orderId?.endsWith(lastThree) && o.storeId === storeAuth.name && o.status === '待取餐');
+
+      if (matches.length === 1) {
+        setOrderPreview(matches[0]);
+      } else if (matches.length > 1) {
+        setOrderPreview({ error: '多個訂單符合此碼，請確認輸入' });
+      } else {
+        setOrderPreview({ error: '找不到訂單，請確認後三碼數字' });
+      }
+    } catch {
+      setOrderPreview({ error: '查詢失敗，請重試' });
+    } finally {
+      setSearchingOrder(false);
+    }
+  };
+
   /* ── 確認取餐核心邏輯 ── */
-  const doConfirmPickup = async (oid) => {
-    if (!oid) return;
+  const doConfirmPickup = async () => {
+    if (!orderPreview || orderPreview.error || !orderPreview.orderId) return;
     setConfirming(true);
     setConfirmMsg({ type: '', text: '' });
     try {
-      const orderSnap = await getDocs(query(collection(db, 'orders'), where('orderId', '==', oid)));
-      if (orderSnap.empty) { setConfirmMsg({ type: 'error', text: '找不到此訂單編號' }); return; }
+      const orderSnap = await getDocs(query(collection(db, 'orders'), where('orderId', '==', orderPreview.orderId)));
+      if (orderSnap.empty) { setConfirmMsg({ type: 'error', text: '找不到此訂單' }); return; }
       const orderDoc  = orderSnap.docs[0];
       const orderData = orderDoc.data();
       if (orderData.status !== '待取餐') {
@@ -359,7 +389,9 @@ export default function StoreDashboard({ storeAuth, onLogout }) {
       const userSnap = await getDocs(query(collection(db, 'users'), where('studentId', '==', orderData.studentId)));
       if (!userSnap.empty) {
         const userDoc = userSnap.docs[0];
-        await updateDoc(userDoc.ref, { creditScore: (userDoc.data().creditScore ?? 100) + 10 });
+        const curScore = userDoc.data().creditScore ?? 100;
+        const newScore = Math.min(curScore + 10, 200);
+        await updateDoc(userDoc.ref, { creditScore: newScore });
       }
 
       const now = new Date();
@@ -373,14 +405,13 @@ export default function StoreDashboard({ storeAuth, onLogout }) {
 
       setConfirmMsg({ type: 'success', text: `✅ 取餐確認！已為 ${orderData.studentName || orderData.studentId} 加 10 積分` });
       setConfirmInput('');
+      setOrderPreview(null);
     } catch {
       setConfirmMsg({ type: 'error', text: '操作失敗，請重試' });
     } finally {
       setConfirming(false);
     }
   };
-
-  const handleConfirmPickup = () => doConfirmPickup(confirmInput.trim());
 
   /* ── 未取餐：扣 15 積分 + 寫 points_log + 可能停權 ── */
   const [noShowTarget, setNoShowTarget] = useState(null); // orderId string
@@ -422,6 +453,8 @@ export default function StoreDashboard({ storeAuth, onLogout }) {
       });
 
       setNoShowTarget(null);
+      setConfirmInput('');
+      setOrderPreview(null);
       setConfirmMsg({ type: 'success', text: `已標記未取餐，扣除 ${orderData.studentName || orderData.studentId} 15 積分` });
     } catch {
       setConfirmMsg({ type: 'error', text: '操作失敗，請重試' });
@@ -542,24 +575,53 @@ export default function StoreDashboard({ storeAuth, onLogout }) {
           <>
             {/* ── 確認取餐 ── */}
             <div className="bg-white rounded-2xl shadow-sm p-4">
-              <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">掃碼 / 輸入訂單編號確認取餐</p>
+              <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">輸入訂單後三碼查詢</p>
               <div className="flex gap-2">
                 <input
                   className="flex-1 border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-primary bg-gray-50 font-mono"
-                  placeholder="ORD-XXXXXXXX"
+                  placeholder="例：123"
+                  maxLength="3"
                   value={confirmInput}
-                  onChange={(e) => setConfirmInput(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && handleConfirmPickup()}
+                  onChange={(e) => {
+                    const val = e.target.value.replace(/\D/g, '');
+                    setConfirmInput(val);
+                    handleSearchOrder(val);
+                  }}
                 />
                 <button
-                  onClick={handleConfirmPickup}
-                  disabled={confirming || !confirmInput.trim()}
+                  onClick={doConfirmPickup}
+                  disabled={confirming || !orderPreview || orderPreview.error}
                   className="bg-green-500 hover:bg-green-600 text-white text-sm font-bold px-4 py-2 rounded-xl
                     disabled:opacity-40 transition-colors shrink-0"
                 >
-                  {confirming ? '…' : '確認'}
+                  {confirming ? '…' : '確認取餐'}
                 </button>
               </div>
+
+              {/* 訂單預覽 */}
+              {orderPreview && !orderPreview.error && (
+                <div className="mt-3 bg-green-50 border border-green-200 rounded-xl p-3">
+                  <div className="text-xs text-green-600 font-bold mb-2">✅ 找到訂單</div>
+                  <div className="text-sm text-gray-800 mb-1">
+                    <strong>{orderPreview.studentName || orderPreview.studentId}</strong>
+                  </div>
+                  <div className="text-xs text-gray-600 mb-2">
+                    {(orderPreview.items || []).slice(0, 2).join(' · ')}
+                    {(orderPreview.items || []).length > 2 && '…'}
+                  </div>
+                  <div className="text-sm font-bold text-primary">
+                    金額：${orderPreview.total}
+                  </div>
+                </div>
+              )}
+
+              {/* 錯誤提示 */}
+              {orderPreview?.error && (
+                <div className="mt-2 text-sm rounded-xl px-3 py-2 bg-red-50 text-red-600">
+                  {orderPreview.error}
+                </div>
+              )}
+
               {confirmMsg.text && (
                 <div className={`mt-2 text-sm rounded-xl px-3 py-2
                   ${confirmMsg.type === 'success' ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-600'}`}>
@@ -586,7 +648,11 @@ export default function StoreDashboard({ storeAuth, onLogout }) {
               <OrderCard
                 key={o.orderId}
                 order={o}
-                onComplete={(oid) => doConfirmPickup(oid)}
+                onComplete={(oid) => {
+                  const lastThree = oid.slice(-3);
+                  setConfirmInput(lastThree);
+                  handleSearchOrder(lastThree);
+                }}
                 onNoShow={(oid) => setNoShowTarget(oid)}
               />
             ))}
