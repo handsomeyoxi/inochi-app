@@ -1,18 +1,13 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { collection, addDoc, getDocs, query, where } from 'firebase/firestore';
 import { db } from '../firebase';
 
-/* 白名單：既有帳號可自動移轉到 Firestore */
-const STORE_ACCOUNTS = [
-  { username: 'sushi01', password: '12345678', name: '濱海迴轉壽司', type: '壽司' },
-  { username: 'drink01', password: '12345678', name: '小Q飲料坊',    type: '飲料' },
-  { username: 'bread01', password: '12345678', name: '老師傅麵包坊', type: '麵包' },
-  { username: 'bento01', password: '12345678', name: '阿嬤的便當',   type: '便當' },
-  { username: 'oden01',  password: '12345678', name: '熱呼呼關東煮', type: '關東煮' },
-];
-
 const TYPE_EMOJI = { '壽司': '🍣', '飲料': '🧋', '麵包': '🍞', '便當': '🍱', '關東煮': '🍢' };
+
+/* 中原大學附近座標 */
+const DEFAULT_LAT = 24.9562;
+const DEFAULT_LNG = 121.2424;
 
 function Field({ label, children }) {
   return (
@@ -25,12 +20,28 @@ function Field({ label, children }) {
 
 const inputCls = 'w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-100 bg-gray-50';
 
+/* Nominatim geocoding API */
+async function geocodeAddress(address) {
+  if (!address) return { lat: DEFAULT_LAT, lng: DEFAULT_LNG };
+  try {
+    const res = await fetch(
+      `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(address)}&format=json&limit=1`
+    );
+    const data = await res.json();
+    if (data.length > 0) {
+      return { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) };
+    }
+  } catch { /* fallback */ }
+  return { lat: DEFAULT_LAT, lng: DEFAULT_LNG };
+}
+
 export default function StoreLoginPage({ onLogin }) {
   const navigate = useNavigate();
   const [tab, setTab]       = useState('login');
   const [error, setError]   = useState('');
   const [success, setSuccess] = useState('');
   const [loading, setLoading] = useState(false);
+  const [allStores, setAllStores] = useState([]);
 
   /* 登入表單 */
   const [loginForm, setLoginForm] = useState({ username: '', password: '' });
@@ -40,8 +51,20 @@ export default function StoreLoginPage({ onLogin }) {
   const [regForm, setRegForm] = useState({
     name: '', username: '', password: '', type: '壽司',
     address: '', phone: '', businessHours: '', email: '',
+    lat: DEFAULT_LAT, lng: DEFAULT_LNG,
   });
   const setR = (k) => (e) => setRegForm((f) => ({ ...f, [k]: e.target.value }));
+
+  /* 從 Firestore 讀取所有店家 */
+  useEffect(() => {
+    (async () => {
+      try {
+        const snap = await getDocs(collection(db, 'stores'));
+        const stores = snap.docs.map(d => d.data()).sort((a, b) => (a.name > b.name ? 1 : -1));
+        setAllStores(stores);
+      } catch { /* 空列表 */ }
+    })();
+  }, []);
 
   /* ── 登入 ── */
   const handleLogin = async () => {
@@ -49,7 +72,6 @@ export default function StoreLoginPage({ onLogin }) {
     if (!loginForm.username || !loginForm.password) { setError('請填寫帳號和密碼'); return; }
     setLoading(true);
     try {
-      /* 先查 Firestore */
       const snap = await getDocs(query(collection(db, 'stores'), where('username', '==', loginForm.username)));
       if (!snap.empty) {
         const data = snap.docs[0].data();
@@ -57,13 +79,7 @@ export default function StoreLoginPage({ onLogin }) {
         onLogin(data);
         return;
       }
-      /* Fallback：白名單自動移轉到 Firestore */
-      const matched = STORE_ACCOUNTS.find((a) => a.username === loginForm.username);
-      if (!matched) { setError('無店家權限，請先註冊'); return; }
-      if (matched.password !== loginForm.password) { setError('密碼錯誤'); return; }
-      const storeData = { ...matched, registeredAt: new Date().toISOString() };
-      await addDoc(collection(db, 'stores'), storeData);
-      onLogin(storeData);
+      setError('帳號不存在，請先註冊');
     } catch {
       setError('連線失敗，請稍後再試');
     } finally {
@@ -78,11 +94,17 @@ export default function StoreLoginPage({ onLogin }) {
     if (regForm.password.length < 6) { setError('密碼至少 6 個字元'); return; }
     setLoading(true);
     try {
-      /* 檢查 Firestore 是否重複 */
+      /* 檢查帳號是否重複 */
       const snap = await getDocs(query(collection(db, 'stores'), where('username', '==', regForm.username)));
       if (!snap.empty) { setError('此帳號已被使用'); return; }
-      /* 檢查白名單是否重複 */
-      if (STORE_ACCOUNTS.some((a) => a.username === regForm.username)) { setError('此帳號已被使用'); return; }
+
+      /* 地理編碼：若未填經緯度，則用地址查詢 */
+      let { lat, lng } = regForm;
+      if (!lat || !lng) {
+        const coords = await geocodeAddress(regForm.address);
+        lat = coords.lat;
+        lng = coords.lng;
+      }
 
       await addDoc(collection(db, 'stores'), {
         name:          regForm.name,
@@ -93,9 +115,11 @@ export default function StoreLoginPage({ onLogin }) {
         phone:         regForm.phone,
         businessHours: regForm.businessHours,
         email:         regForm.email,
+        lat:           lat,
+        lng:           lng,
         registeredAt:  new Date().toISOString(),
       });
-      setRegForm({ name: '', username: '', password: '', type: '壽司', address: '', phone: '', businessHours: '', email: '' });
+      setRegForm({ name: '', username: '', password: '', type: '壽司', address: '', phone: '', businessHours: '', email: '', lat: DEFAULT_LAT, lng: DEFAULT_LNG });
       setTab('login');
       setSuccess('店家帳號建立成功！請登入');
     } catch {
@@ -148,8 +172,15 @@ export default function StoreLoginPage({ onLogin }) {
           {tab === 'login' && (
             <>
               <Field label="店家帳號">
-                <input className={inputCls} placeholder="sushi01"
-                  value={loginForm.username} onChange={setL('username')} onKeyDown={handleKey} />
+                <select className={inputCls}
+                  value={loginForm.username} onChange={(e) => setLoginForm({ ...loginForm, username: e.target.value, password: '' })}>
+                  <option value="">-- 選擇店家 --</option>
+                  {allStores.map((store) => (
+                    <option key={store.username} value={store.username}>
+                      {TYPE_EMOJI[store.type] || '🏪'} {store.name} ({store.username})
+                    </option>
+                  ))}
+                </select>
               </Field>
               <Field label="密碼">
                 <input type="password" className={inputCls} placeholder="••••••••"
@@ -161,25 +192,6 @@ export default function StoreLoginPage({ onLogin }) {
                   disabled:opacity-60 transition-all active:scale-[0.98]">
                 {loading ? '登入中…' : '店家登入'}
               </button>
-
-              {/* Demo hints */}
-              <div className="bg-gray-50 rounded-2xl p-3">
-                <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-2">
-                  預設店家帳號（點擊填入）
-                </p>
-                <div className="space-y-1">
-                  {STORE_ACCOUNTS.map((a) => (
-                    <button key={a.username}
-                      onClick={() => setLoginForm({ username: a.username, password: '' })}
-                      className="w-full text-left text-xs text-gray-600 hover:text-primary
-                        px-3 py-1.5 rounded-xl hover:bg-orange-50 transition-colors flex items-center gap-2">
-                      <span>{TYPE_EMOJI[a.type]}</span>
-                      <span className="flex-1">{a.name}</span>
-                      <span className="font-mono text-gray-400">{a.username}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
             </>
           )}
 
@@ -217,6 +229,14 @@ export default function StoreLoginPage({ onLogin }) {
               <Field label="電子信箱">
                 <input type="email" className={inputCls} placeholder="例：store@email.com"
                   value={regForm.email} onChange={setR('email')} onKeyDown={handleKey} />
+              </Field>
+              <Field label="緯度（可選，未填時用地址查詢）">
+                <input type="number" step="0.0001" className={inputCls} placeholder="例：24.9562"
+                  value={regForm.lat} onChange={setR('lat')} onKeyDown={handleKey} />
+              </Field>
+              <Field label="經度（可選，未填時用地址查詢）">
+                <input type="number" step="0.0001" className={inputCls} placeholder="例：121.2424"
+                  value={regForm.lng} onChange={setR('lng')} onKeyDown={handleKey} />
               </Field>
 
               <button onClick={handleRegister} disabled={loading}

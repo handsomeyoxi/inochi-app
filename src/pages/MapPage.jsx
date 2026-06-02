@@ -6,6 +6,7 @@ import { useNavigate } from 'react-router-dom';
 import { collection, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebase';
 import mockStores from '../data/mockStores';
+import { getDocs } from 'firebase/firestore';
 
 const TYPE_EMOJI = { '壽司': '🍣', '飲料': '🧋', '麵包': '🍞', '便當': '🍱', '關東煮': '🍢' };
 const FILTERS = ['全部', '壽司', '飲料', '麵包', '便當', '關東煮'];
@@ -35,37 +36,54 @@ export default function MapPage() {
   const [search,   setSearch]   = useState('');
   const [filter,   setFilter]   = useState('全部');
   const [selected, setSelected] = useState(null);
-  const [stockMap,    setStockMap]    = useState({}); // storeName → total stock
-  const [boxStockMap, setBoxStockMap] = useState({}); // storeName → box stock
+  const [stores,   setStores]   = useState([]);
+  const [stockMap, setStockMap] = useState({}); // storeName → total stock
+
+  /* 從 Firestore 讀取店家 */
+  useEffect(() => {
+    (async () => {
+      try {
+        const snap = await getDocs(collection(db, 'stores'));
+        const storeList = snap.docs.map(d => {
+          const data = d.data();
+          return {
+            ...data,
+            id: data.username, // 使用 username 作為 id
+            lat: data.lat ?? 24.9562,
+            lng: data.lng ?? 121.2424,
+          };
+        });
+        setStores(storeList);
+      } catch { /* 空列表 */ }
+    })();
+  }, []);
 
   /* 即時監聽所有店家庫存 */
   useEffect(() => {
     const unsub = onSnapshot(collection(db, 'products'), (snap) => {
       const total = {};
-      const box   = {};
       snap.docs.forEach(d => {
         const p = d.data();
         if (!total[p.storeId]) total[p.storeId] = 0;
         if (p.available !== false) total[p.storeId] += (p.stock ?? 0);
-        if (p.isBox) box[p.storeId] = p.stock ?? 0;
       });
       setStockMap(total);
-      setBoxStockMap(box);
     }, () => {});
     return () => unsub();
   }, []);
 
-  /* 判斷一間店是否有貨（從 Firestore 即時庫存判斷） */
+  /* 判斷一間店是否有貨（庫存 > 0） */
   const isStoreAvailable = (store) => (stockMap[store.name] ?? 0) > 0;
 
+  /* 篩選店家 */
   const filtered = useMemo(
     () =>
-      mockStores.filter((s) => {
+      stores.filter((s) => {
         const matchType = filter === '全部' || s.type === filter;
         const matchSearch = !search || s.name.includes(search);
         return matchType && matchSearch;
       }),
-    [search, filter]
+    [stores, search, filter]
   );
 
   return (
