@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, NavLink, useLocation } from 'react-router-dom';
 import { collection, getDocs, query, where, updateDoc, doc, addDoc } from 'firebase/firestore';
-import { db, fillMissingCoordinates } from './firebase';
+import { db, fillMissingCoordinates, initializeStoreInfo } from './firebase';
 import MapPage from './pages/MapPage';
 import ProductPage from './pages/ProductPage';
 import CartPage from './pages/CartPage';
@@ -114,10 +114,11 @@ function AppContent() {
     try { return JSON.parse(localStorage.getItem('inochi_store_auth') || 'null'); } catch { return null; }
   });
 
-  /* 應用啟動時初始化店家座標（只執行一次） */
+  /* 應用啟動時初始化店家資訊（只執行一次） */
   useEffect(() => {
     initializeStores();
     fillMissingCoordinates();
+    initializeStoreInfo();
     fixCreditScores();
   }, []);
 

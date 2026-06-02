@@ -1,5 +1,5 @@
 import { initializeApp } from "firebase/app";
-import { getFirestore, collection, getDocs, updateDoc, doc } from "firebase/firestore";
+import { getFirestore, collection, getDocs, updateDoc, doc, query, where } from "firebase/firestore";
 
 const firebaseConfig = {
   apiKey: "AIzaSyCHOY47i-2OnvrrJcDCq769fRL_p8fIG0c",
@@ -73,5 +73,90 @@ export async function fillMissingCoordinates() {
     }
   } catch (err) {
     console.error('❌ 補充座標失敗:', err);
+  }
+}
+
+/* 店家基本資訊對應表 */
+const STORE_INFO = {
+  sushi01: {
+    address: "桃園市中壢區中北路168號",
+    phone: "03-4561234",
+    hours: "11:00-21:00",
+    email: "sushi01@inochi.com"
+  },
+  drink01: {
+    address: "桃園市中壢區實踐路52號",
+    phone: "03-4523456",
+    hours: "10:00-22:00",
+    email: "drink01@inochi.com"
+  },
+  bread01: {
+    address: "桃園市中壢區日新路88號",
+    phone: "03-4534567",
+    hours: "08:00-20:00",
+    email: "bread01@inochi.com"
+  },
+  bento01: {
+    address: "桃園市中壢區中北路220號",
+    phone: "03-4545678",
+    hours: "10:30-19:30",
+    email: "bento01@inochi.com"
+  },
+  oden01: {
+    address: "桃園市中壢區龍岡路一段12號",
+    phone: "03-4556789",
+    hours: "14:00-23:00",
+    email: "oden01@inochi.com"
+  },
+  john1234: {
+    address: "桃園市中壢區大仁街45號",
+    phone: "0912-345678",
+    hours: "16:00-24:00",
+    email: "john1234@inochi.com"
+  },
+  xin1234: {
+    address: "桃園市中壢區三和路78號",
+    phone: "0923-456789",
+    hours: "15:00-23:30",
+    email: "xin1234@inochi.com"
+  }
+};
+
+/* 初始化店家基本資訊（地址、電話、營業時間、信箱） */
+export async function initializeStoreInfo() {
+  console.log('📋 開始補充店家基本資訊...');
+  try {
+    const updates = [];
+
+    for (const [username, info] of Object.entries(STORE_INFO)) {
+      const q = query(collection(db, 'stores'), where('username', '==', username));
+      const snap = await getDocs(q);
+
+      if (!snap.empty) {
+        const docRef = snap.docs[0].ref;
+        const storeData = snap.docs[0].data();
+
+        // 檢查是否已有完整資訊
+        const needsUpdate = !storeData.address || !storeData.phone || !storeData.hours || !storeData.email;
+
+        if (needsUpdate) {
+          updates.push(updateDoc(docRef, info));
+          console.log(`✅ 更新 ${storeData.name || username} 資訊`);
+        } else {
+          console.log(`✓ ${storeData.name || username} 已有完整資訊`);
+        }
+      } else {
+        console.log(`⚠️ 找不到店家 ${username}`);
+      }
+    }
+
+    if (updates.length > 0) {
+      await Promise.all(updates);
+      console.log(`✅ 店家資訊補充完成：${updates.length} 間店家`);
+    } else {
+      console.log('✓ 所有店家都已有完整資訊');
+    }
+  } catch (err) {
+    console.error('❌ 補充店家資訊失敗:', err);
   }
 }
