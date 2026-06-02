@@ -27,7 +27,7 @@ function ArcGauge({ score }) {
         strokeDasharray={`${arc} ${C - arc}`} strokeLinecap="round"
         transform={`rotate(-135 ${cx} ${cy})`} />
       <circle cx={cx} cy={cy} r={r} fill="none" stroke={color} strokeWidth={sw}
-        strokeDasharray={`${filled} ${C - filled}`} strokeLinecap="round"
+        strokeDasharray={`${filled} ${arc - filled}`} strokeLinecap="round"
         transform={`rotate(-135 ${cx} ${cy})`}
         style={{ transition: 'stroke-dasharray 0.9s cubic-bezier(.4,0,.2,1)' }} />
       <text x={cx} y={cy - 8} textAnchor="middle" dominantBaseline="middle"
