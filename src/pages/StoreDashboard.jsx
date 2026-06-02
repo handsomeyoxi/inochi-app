@@ -346,10 +346,10 @@ export default function StoreDashboard({ storeAuth, onLogout }) {
 
   const handleSearchOrder = async (lastThree) => {
     if (!lastThree || lastThree.length !== 3) {
-      setOrderPreview(null);
       return;
     }
     setSearchingOrder(true);
+    setConfirmMsg({ type: '', text: '' });
     try {
       const orderSnap = await getDocs(collection(db, 'orders'));
       const matches = orderSnap.docs
@@ -371,12 +371,13 @@ export default function StoreDashboard({ storeAuth, onLogout }) {
   };
 
   /* ── 確認取餐核心邏輯 ── */
-  const doConfirmPickup = async () => {
-    if (!orderPreview || orderPreview.error || !orderPreview.orderId) return;
+  const doConfirmPickup = async (oid) => {
+    const targetOrderId = oid || (orderPreview?.orderId);
+    if (!targetOrderId) return;
     setConfirming(true);
     setConfirmMsg({ type: '', text: '' });
     try {
-      const orderSnap = await getDocs(query(collection(db, 'orders'), where('orderId', '==', orderPreview.orderId)));
+      const orderSnap = await getDocs(query(collection(db, 'orders'), where('orderId', '==', targetOrderId)));
       if (orderSnap.empty) { setConfirmMsg({ type: 'error', text: '找不到此訂單' }); return; }
       const orderDoc  = orderSnap.docs[0];
       const orderData = orderDoc.data();
@@ -573,10 +574,10 @@ export default function StoreDashboard({ storeAuth, onLogout }) {
         {/* Orders tab */}
         {tab === 'orders' && (
           <>
-            {/* ── 確認取餐 ── */}
+            {/* ── 搜尋訂單 ── */}
             <div className="bg-white rounded-2xl shadow-sm p-4">
               <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">輸入訂單後三碼查詢</p>
-              <div className="flex gap-2">
+              <div className="flex gap-2 mb-3">
                 <input
                   className="flex-1 border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-primary bg-gray-50 font-mono"
                   placeholder="例：123"
@@ -585,45 +586,63 @@ export default function StoreDashboard({ storeAuth, onLogout }) {
                   onChange={(e) => {
                     const val = e.target.value.replace(/\D/g, '');
                     setConfirmInput(val);
-                    handleSearchOrder(val);
                   }}
                 />
                 <button
-                  onClick={doConfirmPickup}
-                  disabled={confirming || !orderPreview || orderPreview.error}
-                  className="bg-green-500 hover:bg-green-600 text-white text-sm font-bold px-4 py-2 rounded-xl
+                  onClick={() => handleSearchOrder(confirmInput)}
+                  disabled={searchingOrder || confirmInput.length !== 3}
+                  className="bg-blue-500 hover:bg-blue-600 text-white text-sm font-bold px-4 py-2 rounded-xl
                     disabled:opacity-40 transition-colors shrink-0"
                 >
-                  {confirming ? '…' : '確認取餐'}
+                  {searchingOrder ? '…' : '🔍 搜尋'}
                 </button>
               </div>
 
-              {/* 訂單預覽 */}
+              {/* 搜尋結果 */}
               {orderPreview && !orderPreview.error && (
-                <div className="mt-3 bg-green-50 border border-green-200 rounded-xl p-3">
-                  <div className="text-xs text-green-600 font-bold mb-2">✅ 找到訂單</div>
-                  <div className="text-sm text-gray-800 mb-1">
-                    <strong>{orderPreview.studentName || orderPreview.studentId}</strong>
+                <div className="bg-green-50 border border-green-200 rounded-xl p-4">
+                  <div className="text-xs text-green-600 font-bold mb-3">✅ 找到訂單</div>
+                  <div className="text-sm font-bold text-gray-800 mb-2">
+                    {orderPreview.studentName || orderPreview.studentId}
                   </div>
-                  <div className="text-xs text-gray-600 mb-2">
-                    {(orderPreview.items || []).slice(0, 2).join(' · ')}
-                    {(orderPreview.items || []).length > 2 && '…'}
+                  <div className="space-y-1 mb-3">
+                    {(orderPreview.items || []).map((item, i) => (
+                      <div key={i} className="text-xs text-gray-600">{item}</div>
+                    ))}
                   </div>
-                  <div className="text-sm font-bold text-primary">
+                  <div className="text-lg font-bold text-primary mb-3">
                     金額：${orderPreview.total}
                   </div>
+                  {orderPreview.status === '待取餐' && (
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => setNoShowTarget(orderPreview.orderId)}
+                        className="flex-1 bg-red-500 hover:bg-red-600 text-white text-xs font-bold px-3 py-2 rounded-xl transition-colors"
+                      >
+                        未取餐
+                      </button>
+                      <button
+                        onClick={() => doConfirmPickup(orderPreview.orderId)}
+                        disabled={confirming}
+                        className="flex-1 bg-green-500 hover:bg-green-600 text-white text-xs font-bold px-3 py-2 rounded-xl
+                          disabled:opacity-50 transition-colors"
+                      >
+                        {confirming ? '…' : '確認取餐'}
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
 
               {/* 錯誤提示 */}
               {orderPreview?.error && (
-                <div className="mt-2 text-sm rounded-xl px-3 py-2 bg-red-50 text-red-600">
+                <div className="text-sm rounded-xl px-3 py-2 bg-red-50 text-red-600">
                   {orderPreview.error}
                 </div>
               )}
 
               {confirmMsg.text && (
-                <div className={`mt-2 text-sm rounded-xl px-3 py-2
+                <div className={`text-sm rounded-xl px-3 py-2 mt-2
                   ${confirmMsg.type === 'success' ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-600'}`}>
                   {confirmMsg.text}
                 </div>
@@ -648,11 +667,7 @@ export default function StoreDashboard({ storeAuth, onLogout }) {
               <OrderCard
                 key={o.orderId}
                 order={o}
-                onComplete={(oid) => {
-                  const lastThree = oid.slice(-3);
-                  setConfirmInput(lastThree);
-                  handleSearchOrder(lastThree);
-                }}
+                onComplete={(oid) => doConfirmPickup(oid)}
                 onNoShow={(oid) => setNoShowTarget(oid)}
               />
             ))}
