@@ -1,9 +1,7 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { QRCodeSVG } from 'qrcode.react';
 import {
-  collection, addDoc, updateDoc, doc,
-  query, where, onSnapshot,
+  collection, query, where, onSnapshot,
 } from 'firebase/firestore';
 import { db } from '../firebase';
 
@@ -39,10 +37,6 @@ const SEED_PRODUCTS = {
     { name: '玉米',   originalPrice: 30, specialPrice: 25, stock: 6  },
   ],
 };
-
-function genOrderId() {
-  return 'ORD-' + Math.random().toString(36).substring(2, 10).toUpperCase();
-}
 
 export default function ProductPage() {
   const location = useLocation();
@@ -135,17 +129,15 @@ export default function ProductPage() {
   const boxOri      = boxProduct?.originalPrice  ?? store?.original_price  ?? 0;
   const boxMaxStock = boxProduct?.stock          ?? store?.stock_quantity  ?? 0;
 
-  /* ── 訂單狀態 ── */
-  const [boxQty,      setBoxQty]      = useState(0);
-  const [itemQtys,    setItemQtys]    = useState({});
-  const [showConfirm, setShowConfirm] = useState(false);
-  const [showQR,      setShowQR]      = useState(false);
-  const [ordering,    setOrdering]    = useState(false);
-  const [orderError,  setOrderError]  = useState('');
-  const [orderId]                      = useState(genOrderId);
+  /* ── 購物狀態 ── */
+  const [boxQty,    setBoxQty]    = useState(0);
+  const [itemQtys,  setItemQtys]  = useState({});
+  const [ordering,  setOrdering]  = useState(false);
+  const [orderError, setOrderError] = useState('');
+  const [addedMsg, setAddedMsg]   = useState('');
 
   /* 切換 store 時重設數量 */
-  useEffect(() => { setBoxQty(0); setItemQtys({}); setShowConfirm(false); setShowQR(false); }, [store?.name]);
+  useEffect(() => { setBoxQty(0); setItemQtys({}); }, [store?.name]);
 
   /* 庫存歸零時夾回合法範圍（boxMaxStock 已在上方宣告） */
   useEffect(() => {
@@ -174,64 +166,63 @@ export default function ProductPage() {
     }
   }, [boxQty, boxTotal, regularProducts, itemQtys]);
 
-  const qrPayload = useMemo(() => {
-    try {
-      return JSON.stringify({ orderId, store: store?.name, items: orderLines, total });
-    } catch {
-      return JSON.stringify({ orderId });
-    }
-  }, [orderId, store?.name, orderLines, total]);
-
-  /* ── 確認預訂 ── */
-  const handleConfirm = async () => {
-    setOrderError('');
-    setShowConfirm(false);
+  /* ── 加入購物車 ── */
+  const handleAddToCart = () => {
+    if (total === 0) return;
     setOrdering(true);
 
-    const currentUser = (() => {
-      try { return JSON.parse(localStorage.getItem('inochi_user') || 'null'); } catch { return null; }
-    })();
-    const now = new Date();
-
     try {
-      /* 扣庫存 */
-      if (boxQty > 0 && boxProduct?._docId) {
-        await updateDoc(doc(db, 'products', boxProduct._docId), {
-          stock: Math.max(0, (boxProduct.stock ?? 0) - boxQty),
+      /* 從 localStorage 讀取或初始化購物車 */
+      let cart = {};
+      try { cart = JSON.parse(localStorage.getItem('inochi_cart_items') || '{}'); } catch { }
+
+      /* 該店家的購物車項目 */
+      const storeKey = store?.name;
+      if (!cart[storeKey]) {
+        cart[storeKey] = {
+          storeType: store?.type ?? '',
+          items: [],
+        };
+      }
+
+      /* 加入驚喜包 */
+      if (boxQty > 0) {
+        cart[storeKey].items.push({
+          id: `box_${Date.now()}`,
+          name: '🎁 驚喜包',
+          specialPrice: boxPrice,
+          qty: boxQty,
+          isBox: true,
         });
       }
+
+      /* 加入一般商品 */
       for (const p of regularProducts) {
         const qty = itemQtys[p._docId] ?? 0;
-        if (qty > 0 && p._docId) {
-          await updateDoc(doc(db, 'products', p._docId), {
-            stock: Math.max(0, (p.stock ?? 0) - qty),
+        if (qty > 0) {
+          cart[storeKey].items.push({
+            id: p._docId,
+            name: p.name,
+            specialPrice: p.specialPrice,
+            qty: qty,
+            isBox: false,
           });
         }
       }
-      /* 寫訂單 */
-      await addDoc(collection(db, 'orders'), {
-        orderId,
-        studentId:   currentUser?.studentId || 'guest',
-        studentName: currentUser?.name      || currentUser?.studentId || 'guest',
-        storeId:     store?.name,
-        store:       store?.name,
-        storeType:   store?.type ?? '',
-        items:       orderLines,
-        total,
-        deadline:    store?.pickup_deadline ?? '',
-        status:      '待取餐',
-        createdAt:   now.toISOString(),
-        date: `${String(now.getMonth() + 1).padStart(2, '0')}/${String(now.getDate()).padStart(2, '0')}`,
-      });
-    } catch (e) {
-      /* Firestore 失敗仍顯示 QR（本地確認），記錄錯誤 */
-      setOrderError('訂單寫入失敗，請截圖 QR Code 自行記錄');
+
+      /* 保存購物車 */
+      localStorage.setItem('inochi_cart_items', JSON.stringify(cart));
+
+      /* 顯示成功提示 */
+      setAddedMsg(`✅ 已加入購物車！共 ${Object.keys(cart).length} 個店家`);
+      setTimeout(() => {
+        navigate('/', { replace: true });
+      }, 2000);
+    } catch {
+      setOrderError('加入購物車失敗，請重試');
     } finally {
       if (isMounted.current) setOrdering(false);
     }
-
-    /* 無論 Firestore 成功與否都顯示 QR */
-    if (isMounted.current) setShowQR(true);
   };
 
   /* ─────────────── 無店家資訊 → 自動導回地圖 ─────────────── */
@@ -366,89 +357,27 @@ export default function ProductPage() {
       </div>
 
       {/* Order bar */}
-      <div className="shrink-0 bg-white border-t border-gray-100 px-4 py-3 shadow-xl">
+      <div className="shrink-0 bg-white border-t border-gray-100 px-4 py-3 shadow-xl space-y-2">
+        {addedMsg && (
+          <div className="bg-green-50 text-green-700 text-sm font-semibold rounded-xl px-3 py-2 text-center">
+            {addedMsg}
+          </div>
+        )}
         <div className="flex items-center justify-between">
           <div>
             <div className="text-xs text-gray-400">合計</div>
             <div className="text-2xl font-black text-primary">${total}</div>
           </div>
-          <button onClick={() => setShowConfirm(true)}
+          <button onClick={handleAddToCart}
             disabled={total === 0 || ordering || fsLoading}
             className="bg-primary hover:bg-primary-dark active:scale-95 transition-all
-              text-white font-bold px-8 py-3 rounded-2xl text-base
+              text-white font-bold px-6 py-3 rounded-2xl text-base
               disabled:opacity-30 disabled:cursor-not-allowed">
-            {ordering ? '處理中…' : '立即預訂'}
+            {ordering ? '加入中…' : '加入購物車'}
           </button>
         </div>
       </div>
 
-      {/* Confirm dialog */}
-      {showConfirm && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center"
-          style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}
-          onClick={() => setShowConfirm(false)}>
-          <div className="bg-white rounded-t-3xl w-full max-w-md p-6"
-            onClick={e => e.stopPropagation()}>
-            <div className="w-10 h-1 bg-gray-200 rounded-full mx-auto mb-5" />
-            <h3 className="text-lg font-bold text-gray-800 mb-4">確認預訂</h3>
-            <div className="bg-gray-50 rounded-2xl p-4 mb-4 space-y-1.5">
-              {orderLines.length === 0 ? (
-                <div className="text-sm text-gray-400">請先選擇商品</div>
-              ) : (
-                orderLines.map((line, i) => <div key={i} className="text-sm text-gray-700">{line}</div>)
-              )}
-              <div className="border-t border-gray-200 pt-2 mt-2 flex justify-between font-bold text-gray-900">
-                <span>總計</span>
-                <span className="text-primary text-lg">${total}</span>
-              </div>
-            </div>
-            <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 mb-5 flex gap-2.5">
-              <span className="text-lg shrink-0">⚠️</span>
-              <p className="text-sm text-amber-800 leading-relaxed">
-                若事後<strong>取消訂單</strong>，將扣除 <strong>15 信用積點</strong>。
-                請確保能於 <strong>{store?.pickup_deadline || '截止時間'}</strong> 前到店取餐。
-              </p>
-            </div>
-            <div className="flex gap-3">
-              <button onClick={() => setShowConfirm(false)}
-                className="flex-1 py-3 rounded-2xl border border-gray-200 text-gray-600 font-semibold">再想想</button>
-              <button onClick={handleConfirm}
-                className="flex-1 py-3 rounded-2xl bg-primary text-white font-bold">確認預訂</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* QR Code modal */}
-      {showQR && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
-          style={{ backgroundColor: 'rgba(0,0,0,0.7)' }}>
-          <div className="bg-white rounded-3xl p-6 w-full max-w-xs text-center shadow-2xl">
-            <div className="text-4xl mb-2">🎉</div>
-            <h3 className="text-xl font-black text-gray-800 mb-1">預訂成功！</h3>
-            <p className="text-sm text-gray-400 mb-1">出示 QR Code 給店家掃描取餐</p>
-            {orderError && (
-              <p className="text-xs text-red-500 mb-3">{orderError}</p>
-            )}
-            <div className="flex justify-center p-3 bg-gray-50 rounded-2xl mb-4">
-              {qrPayload ? (
-                <QRCodeSVG value={qrPayload} size={190} fgColor="#1f2937" level="M" />
-              ) : (
-                <div className="w-48 h-48 bg-gray-100 rounded-xl flex items-center justify-center text-gray-400 text-sm">
-                  QR Code 產生失敗
-                </div>
-              )}
-            </div>
-            <div className="text-xs text-gray-400 mb-0.5">訂單編號</div>
-            <div className="text-sm font-mono font-bold text-gray-700 mb-4">{orderId}</div>
-            <div className="bg-orange-50 rounded-xl px-4 py-2.5 text-sm text-gray-600 mb-5">
-              {store?.name} · 截止 <strong>{store?.pickup_deadline || '—'}</strong> 取餐
-            </div>
-            <button onClick={() => { setShowQR(false); navigate('/'); }}
-              className="w-full py-3 bg-primary text-white font-bold rounded-2xl">返回地圖</button>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
