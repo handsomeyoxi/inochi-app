@@ -143,24 +143,24 @@ export default function MapPage() {
             </button>
 
             {/* Store header */}
-            <div className="flex items-start justify-between mb-4">
-              <div className="flex items-center gap-2">
-                <span className="text-3xl">{TYPE_EMOJI[selected.type]}</span>
-                <div>
-                  <h2 className="text-lg font-bold text-gray-800">{selected.name}</h2>
-                  <span className="text-xs text-gray-400">{selected.type}</span>
+            {(() => {
+              const avail = isStoreAvailable(selected);
+              return (
+                <div className="flex items-center gap-3 mb-4 pr-10">
+                  <span className="text-3xl shrink-0">{TYPE_EMOJI[selected.type]}</span>
+                  <div className="min-w-0">
+                    <h2 className="text-lg font-bold text-gray-800 truncate">{selected.name}</h2>
+                    <div className="flex items-center gap-2 mt-0.5">
+                      <span className="text-xs text-gray-400">{selected.type}</span>
+                      <span className={`text-xs font-bold px-2 py-0.5 rounded-full shrink-0
+                        ${avail ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
+                        {avail ? '✅ 供應中' : '⭕ 已售完'}
+                      </span>
+                    </div>
+                  </div>
                 </div>
-              </div>
-              {(() => {
-                const avail = isStoreAvailable(selected);
-                return (
-                  <span className={`text-xs font-bold px-2.5 py-1 rounded-full mt-1
-                    ${avail ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
-                    {avail ? '✅ 供應中' : '⭕ 已售完'}
-                  </span>
-                );
-              })()}
-            </div>
+              );
+            })()}
 
             {/* Price / Stock / Deadline */}
             {(() => {

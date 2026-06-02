@@ -6,7 +6,6 @@ import {
   query, where, onSnapshot,
 } from 'firebase/firestore';
 import { db } from '../firebase';
-import mockStores from '../data/mockStores';
 
 const TYPE_EMOJI = { '壽司': '🍣', '飲料': '🧋', '麵包': '🍞', '便當': '🍱', '關東煮': '🍢' };
 
@@ -126,7 +125,7 @@ export default function ProductPage() {
     });
 
     return () => { isMounted.current = false; unsub(); };
-  }, [store.name]);
+  }, [store?.name]);
 
   /* ── 衍生商品資料（宣告必須在所有 useEffect 之前） ── */
   const boxProduct      = fsProducts.find(p => p.isBox) ?? null;
@@ -235,21 +234,19 @@ export default function ProductPage() {
     if (isMounted.current) setShowQR(true);
   };
 
-  /* ─────────────── 無店家資訊 → 引導畫面 ─────────────── */
+  /* ─────────────── 無店家資訊 → 自動導回地圖 ─────────────── */
+  useEffect(() => {
+    if (!store) {
+      const t = setTimeout(() => navigate('/', { replace: true }), 1500);
+      return () => clearTimeout(t);
+    }
+  }, [store, navigate]);
+
   if (!store) {
     return (
       <div className="flex flex-col h-full bg-gray-50 items-center justify-center gap-4 px-8">
-        <div className="text-6xl">🗺️</div>
-        <div className="text-center">
-          <p className="text-base font-bold text-gray-700 mb-1">請先從地圖選擇店家</p>
-          <p className="text-sm text-gray-400">點擊地圖上的店家標記，再按「立即預訂」進入此頁</p>
-        </div>
-        <button
-          onClick={() => navigate('/')}
-          className="mt-2 px-6 py-3 bg-primary text-white font-bold rounded-2xl text-sm"
-        >
-          前往地圖
-        </button>
+        <div className="text-5xl animate-pulse">🗺️</div>
+        <p className="text-sm text-gray-400 text-center">未選擇店家，即將返回地圖…</p>
       </div>
     );
   }
