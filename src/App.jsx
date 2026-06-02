@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, NavLink, useLocation } from 'react-router-dom';
 import { collection, getDocs, query, where, updateDoc, doc, addDoc } from 'firebase/firestore';
-import { db } from './firebase';
+import { db, fillMissingCoordinates } from './firebase';
 import MapPage from './pages/MapPage';
 import ProductPage from './pages/ProductPage';
 import CartPage from './pages/CartPage';
@@ -95,6 +95,7 @@ function AppContent() {
   /* 應用啟動時初始化店家座標（只執行一次） */
   useEffect(() => {
     initializeStores();
+    fillMissingCoordinates();
   }, []);
 
   /* Admin is always accessible regardless of other auth state */
