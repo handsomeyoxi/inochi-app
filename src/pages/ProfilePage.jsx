@@ -9,33 +9,56 @@ const STATUS_CLS = {
   待取餐: 'bg-orange-100 text-orange-700',
 };
 
-/* ── Arc Gauge (270° speedometer style) ── */
+/* ── Circular Progress Gauge (full circle, 0° at top) ── */
 function ArcGauge({ score }) {
   const size = 200;
   const sw = 14;
   const r = (size - sw) / 2;
   const C = 2 * Math.PI * r;
-  const arc = C * 0.75;
   const displayScore = Math.min(score, 200);
-  const filled = arc * displayScore / 200;
+  const progress = displayScore / 200;
+  const filled = C * progress;
   const color = displayScore >= 160 ? '#22c55e' : displayScore >= 120 ? '#f59e0b' : '#ef4444';
   const cx = size / 2;
   const cy = size / 2;
+
   return (
-    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} overflow="visible">
-      <circle cx={cx} cy={cy} r={r} fill="none" stroke="#e5e7eb" strokeWidth={sw}
-        strokeDasharray={`${arc} ${C - arc}`} strokeLinecap="round"
-        transform={`rotate(-135 ${cx} ${cy})`} />
-      <circle cx={cx} cy={cy} r={r} fill="none" stroke={color} strokeWidth={sw}
-        strokeDasharray={`${filled} ${arc - filled}`} strokeLinecap="round"
-        transform={`rotate(-135 ${cx} ${cy})`}
-        style={{ transition: 'stroke-dasharray 0.9s cubic-bezier(.4,0,.2,1)' }} />
-      <text x={cx} y={cy - 8} textAnchor="middle" dominantBaseline="middle"
-        fontSize="46" fontWeight="800" fill={color} fontFamily="system-ui, sans-serif">
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+      {/* 背景灰色圓環 */}
+      <circle
+        cx={cx} cy={cy} r={r}
+        fill="none"
+        stroke="#e5e7eb"
+        strokeWidth={sw}
+        strokeLinecap="round"
+      />
+      {/* 進度圓環（綠色/橙色/紅色） */}
+      <circle
+        cx={cx} cy={cy} r={r}
+        fill="none"
+        stroke={color}
+        strokeWidth={sw}
+        strokeLinecap="round"
+        strokeDasharray={`${filled} ${C - filled}`}
+        strokeDashoffset="0"
+        transform={`rotate(-90 ${cx} ${cy})`}
+        style={{ transition: 'stroke-dasharray 0.9s cubic-bezier(.4,0,.2,1)' }}
+      />
+      {/* 中央數字 */}
+      <text
+        x={cx} y={cy - 8}
+        textAnchor="middle" dominantBaseline="middle"
+        fontSize="46" fontWeight="800" fill={color}
+        fontFamily="system-ui, sans-serif"
+      >
         {displayScore}
       </text>
-      <text x={cx} y={cy + 26} textAnchor="middle"
-        fontSize="13" fill="#9ca3af" fontFamily="system-ui, sans-serif">
+      <text
+        x={cx} y={cy + 26}
+        textAnchor="middle"
+        fontSize="13" fill="#9ca3af"
+        fontFamily="system-ui, sans-serif"
+      >
         信用積點
       </text>
     </svg>
