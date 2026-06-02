@@ -3,13 +3,21 @@ import { MapContainer, TileLayer, Marker, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { useNavigate } from 'react-router-dom';
-import { collection, onSnapshot } from 'firebase/firestore';
+import { collection, onSnapshot, getDocs, query, where, addDoc, updateDoc, doc } from 'firebase/firestore';
 import { db } from '../firebase';
 import mockStores from '../data/mockStores';
-import { getDocs } from 'firebase/firestore';
 
 const TYPE_EMOJI = { '壽司': '🍣', '飲料': '🧋', '麵包': '🍞', '便當': '🍱', '關東煮': '🍢' };
 const FILTERS = ['全部', '壽司', '飲料', '麵包', '便當', '關東煮'];
+
+/* 5 間預設店家資料 */
+const DEFAULT_STORES = [
+  { username: 'sushi01', name: '濱海迴轉壽司', type: '壽司', address: '桃園市中壢區中北路200號附近', lat: 24.9562, lng: 121.2424, password: '12345678' },
+  { username: 'drink01', name: '小Q飲料坊', type: '飲料', address: '桃園市中壢區實踐路附近', lat: 24.9555, lng: 121.2418, password: '12345678' },
+  { username: 'bread01', name: '老師傅麵包坊', type: '麵包', address: '桃園市中壢區日新路附近', lat: 24.9548, lng: 121.2430, password: '12345678' },
+  { username: 'bento01', name: '阿嬤的便當', type: '便當', address: '桃園市中壢區中北路150號附近', lat: 24.9570, lng: 121.2415, password: '12345678' },
+  { username: 'oden01', name: '熱呼呼關東煮', type: '關東煮', address: '桃園市中壢區龍岡路附近', lat: 24.9540, lng: 121.2435, password: '12345678' },
+];
 
 const makeIcon = (isAvailable, type) =>
   L.divIcon({
@@ -33,11 +41,26 @@ function MapClickHandler({ onClose }) {
 
 export default function MapPage() {
   const navigate = useNavigate();
-  const [search,   setSearch]   = useState('');
-  const [filter,   setFilter]   = useState('全部');
-  const [selected, setSelected] = useState(null);
-  const [stores,   setStores]   = useState([]);
-  const [stockMap, setStockMap] = useState({}); // storeName → total stock
+  const [search,        setSearch]        = useState('');
+  const [filter,        setFilter]        = useState('全部');
+  const [selected,      setSelected]      = useState(null);
+  const [stores,        setStores]        = useState([]);
+  const [stockMap,      setStockMap]      = useState({}); // storeName → total stock
+  const [selectedBox,   setSelectedBox]   = useState(null); // 選中店家的驚喜包商品
+
+  /* 初始化預設店家（若不存在） */
+  useEffect(() => {
+    (async () => {
+      try {
+        for (const defaultStore of DEFAULT_STORES) {
+          const snap = await getDocs(query(collection(db, 'stores'), where('username', '==', defaultStore.username)));
+          if (snap.empty) {
+            await addDoc(collection(db, 'stores'), defaultStore);
+          }
+        }
+      } catch { /* 初始化失敗，忽略 */ }
+    })();
+  }, []);
 
   /* 從 Firestore 讀取店家 */
   useEffect(() => {
@@ -71,6 +94,27 @@ export default function MapPage() {
     }, () => {});
     return () => unsub();
   }, []);
+
+  /* 當選中店家時，讀取該店家的驚喜包商品 */
+  useEffect(() => {
+    if (!selected?.name) { setSelectedBox(null); return; }
+    (async () => {
+      try {
+        const snap = await getDocs(query(
+          collection(db, 'products'),
+          where('storeId', '==', selected.name),
+          where('isBox', '==', true)
+        ));
+        if (!snap.empty) {
+          setSelectedBox(snap.docs[0].data());
+        } else {
+          setSelectedBox(null);
+        }
+      } catch {
+        setSelectedBox(null);
+      }
+    })();
+  }, [selected?.name]);
 
   /* 判斷一間店是否有貨（庫存 > 0） */
   const isStoreAvailable = (store) => (stockMap[store.name] ?? 0) > 0;
@@ -184,11 +228,13 @@ export default function MapPage() {
             {(() => {
               const liveStock = stockMap[selected.name] ?? 0;
               const soldOut   = liveStock === 0;
+              const oriPrice = selectedBox?.originalPrice ?? selected.original_price ?? 0;
+              const spePrice = selectedBox?.specialPrice ?? selected.special_price ?? 0;
               return (
                 <div className="grid grid-cols-3 gap-2 mb-4">
                   {[
-                    { label: '原價',   value: `$${selected.original_price}`, sub: true   },
-                    { label: '惜食價', value: `$${selected.special_price}`,  accent: true },
+                    { label: '原價',   value: `$${oriPrice}`, sub: true   },
+                    { label: '惜食價', value: `$${spePrice}`,  accent: true },
                     { label: '剩餘數量',
                       value: soldOut ? '已售完' : `${liveStock} 份`,
                       sold: soldOut },
