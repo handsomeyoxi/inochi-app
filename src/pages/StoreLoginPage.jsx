@@ -37,7 +37,10 @@ export default function StoreLoginPage({ onLogin }) {
   const setL = (k) => (e) => setLoginForm((f) => ({ ...f, [k]: e.target.value }));
 
   /* 註冊表單 */
-  const [regForm, setRegForm] = useState({ name: '', username: '', password: '', type: '壽司' });
+  const [regForm, setRegForm] = useState({
+    name: '', username: '', password: '', type: '壽司',
+    address: '', phone: '', businessHours: '', email: '',
+  });
   const setR = (k) => (e) => setRegForm((f) => ({ ...f, [k]: e.target.value }));
 
   /* ── 登入 ── */
@@ -71,7 +74,7 @@ export default function StoreLoginPage({ onLogin }) {
   /* ── 註冊 ── */
   const handleRegister = async () => {
     setError(''); setSuccess('');
-    if (!regForm.name || !regForm.username || !regForm.password) { setError('請填寫所有欄位'); return; }
+    if (!regForm.name || !regForm.username || !regForm.password) { setError('請填寫所有必填欄位'); return; }
     if (regForm.password.length < 6) { setError('密碼至少 6 個字元'); return; }
     setLoading(true);
     try {
@@ -82,13 +85,17 @@ export default function StoreLoginPage({ onLogin }) {
       if (STORE_ACCOUNTS.some((a) => a.username === regForm.username)) { setError('此帳號已被使用'); return; }
 
       await addDoc(collection(db, 'stores'), {
-        name: regForm.name,
-        username: regForm.username,
-        password: regForm.password,
-        type: regForm.type,
-        registeredAt: new Date().toISOString(),
+        name:          regForm.name,
+        username:      regForm.username,
+        password:      regForm.password,
+        type:          regForm.type,
+        address:       regForm.address,
+        phone:         regForm.phone,
+        businessHours: regForm.businessHours,
+        email:         regForm.email,
+        registeredAt:  new Date().toISOString(),
       });
-      setRegForm({ name: '', username: '', password: '', type: '壽司' });
+      setRegForm({ name: '', username: '', password: '', type: '壽司', address: '', phone: '', businessHours: '', email: '' });
       setTab('login');
       setSuccess('店家帳號建立成功！請登入');
     } catch {
@@ -179,21 +186,37 @@ export default function StoreLoginPage({ onLogin }) {
           {/* ── 註冊 ── */}
           {tab === 'register' && (
             <>
-              <Field label="店家名稱">
+              <Field label="店家名稱 *">
                 <input className={inputCls} placeholder="例：美味壽司屋"
                   value={regForm.name} onChange={setR('name')} onKeyDown={handleKey} />
               </Field>
-              <Field label="帳號">
+              <Field label="帳號 *">
                 <input className={inputCls} placeholder="自訂英數帳號"
                   value={regForm.username} onChange={setR('username')} onKeyDown={handleKey} />
               </Field>
-              <Field label="密碼">
+              <Field label="密碼 *">
                 <input type="password" className={inputCls} placeholder="至少 6 個字元"
                   value={regForm.password} onChange={setR('password')} onKeyDown={handleKey} />
               </Field>
-              <Field label="店家類型">
+              <Field label="店家類型 *">
                 <input className={inputCls} placeholder="例：壽司、飲料、麵包、便當…"
                   value={regForm.type} onChange={setR('type')} onKeyDown={handleKey} />
+              </Field>
+              <Field label="地址">
+                <input className={inputCls} placeholder="例：台北市中正區XX路1號"
+                  value={regForm.address} onChange={setR('address')} onKeyDown={handleKey} />
+              </Field>
+              <Field label="電話">
+                <input className={inputCls} placeholder="例：02-12345678"
+                  value={regForm.phone} onChange={setR('phone')} onKeyDown={handleKey} />
+              </Field>
+              <Field label="營業時間">
+                <input className={inputCls} placeholder="例：11:00 – 21:00"
+                  value={regForm.businessHours} onChange={setR('businessHours')} onKeyDown={handleKey} />
+              </Field>
+              <Field label="電子信箱">
+                <input type="email" className={inputCls} placeholder="例：store@email.com"
+                  value={regForm.email} onChange={setR('email')} onKeyDown={handleKey} />
               </Field>
 
               <button onClick={handleRegister} disabled={loading}

@@ -49,11 +49,10 @@ export default function ProductPage() {
   const location = useLocation();
   const navigate  = useNavigate();
 
-  /* 安全取得 store，確保一定有合法物件 */
+  /* 安全取得 store；若無店家資訊則為 null */
   const store = useMemo(() => {
     const s = location.state?.store;
-    if (s && s.name) return s;
-    return mockStores[0] ?? { name: '', type: '', special_price: 0, original_price: 0, stock_quantity: 0, pickup_deadline: '' };
+    return (s && s.name) ? s : null;
   }, [location.state]);
 
   /* ── Firestore 商品（即時監聽 + 自動 seed） ── */
@@ -68,9 +67,9 @@ export default function ProductPage() {
     didSeed.current   = false;
     if (isMounted.current) { setFsLoading(true); setFsProducts([]); setFsError(''); }
 
-    if (!store.name) { setFsLoading(false); return; }
+    if (!store?.name) { setFsLoading(false); return; }
 
-    const q = query(collection(db, 'products'), where('storeId', '==', store.name));
+    const q = query(collection(db, 'products'), where('storeId', '==', store?.name));
 
     const unsub = onSnapshot(q, async (snap) => {
       if (!isMounted.current) return;
@@ -133,9 +132,9 @@ export default function ProductPage() {
   const boxProduct      = fsProducts.find(p => p.isBox) ?? null;
   const regularProducts = fsProducts.filter(p => !p.isBox && p.available !== false);
 
-  const boxPrice    = boxProduct?.specialPrice   ?? store.special_price   ?? 0;
-  const boxOri      = boxProduct?.originalPrice  ?? store.original_price  ?? 0;
-  const boxMaxStock = boxProduct?.stock          ?? store.stock_quantity  ?? 0;
+  const boxPrice    = boxProduct?.specialPrice   ?? store?.special_price   ?? 0;
+  const boxOri      = boxProduct?.originalPrice  ?? store?.original_price  ?? 0;
+  const boxMaxStock = boxProduct?.stock          ?? store?.stock_quantity  ?? 0;
 
   /* ── 訂單狀態 ── */
   const [boxQty,      setBoxQty]      = useState(0);
@@ -147,7 +146,7 @@ export default function ProductPage() {
   const [orderId]                      = useState(genOrderId);
 
   /* 切換 store 時重設數量 */
-  useEffect(() => { setBoxQty(0); setItemQtys({}); setShowConfirm(false); setShowQR(false); }, [store.name]);
+  useEffect(() => { setBoxQty(0); setItemQtys({}); setShowConfirm(false); setShowQR(false); }, [store?.name]);
 
   /* 庫存歸零時夾回合法範圍（boxMaxStock 已在上方宣告） */
   useEffect(() => {
@@ -178,11 +177,11 @@ export default function ProductPage() {
 
   const qrPayload = useMemo(() => {
     try {
-      return JSON.stringify({ orderId, store: store.name, items: orderLines, total });
+      return JSON.stringify({ orderId, store: store?.name, items: orderLines, total });
     } catch {
       return JSON.stringify({ orderId });
     }
-  }, [orderId, store.name, orderLines, total]);
+  }, [orderId, store?.name, orderLines, total]);
 
   /* ── 確認預訂 ── */
   const handleConfirm = async () => {
@@ -215,12 +214,12 @@ export default function ProductPage() {
         orderId,
         studentId:   currentUser?.studentId || 'guest',
         studentName: currentUser?.name      || currentUser?.studentId || 'guest',
-        storeId:     store.name,
-        store:       store.name,
-        storeType:   store.type ?? '',
+        storeId:     store?.name,
+        store:       store?.name,
+        storeType:   store?.type ?? '',
         items:       orderLines,
         total,
-        deadline:    store.pickup_deadline ?? '',
+        deadline:    store?.pickup_deadline ?? '',
         status:      '待取餐',
         createdAt:   now.toISOString(),
         date: `${String(now.getMonth() + 1).padStart(2, '0')}/${String(now.getDate()).padStart(2, '0')}`,
@@ -235,6 +234,25 @@ export default function ProductPage() {
     /* 無論 Firestore 成功與否都顯示 QR */
     if (isMounted.current) setShowQR(true);
   };
+
+  /* ─────────────── 無店家資訊 → 引導畫面 ─────────────── */
+  if (!store) {
+    return (
+      <div className="flex flex-col h-full bg-gray-50 items-center justify-center gap-4 px-8">
+        <div className="text-6xl">🗺️</div>
+        <div className="text-center">
+          <p className="text-base font-bold text-gray-700 mb-1">請先從地圖選擇店家</p>
+          <p className="text-sm text-gray-400">點擊地圖上的店家標記，再按「立即預訂」進入此頁</p>
+        </div>
+        <button
+          onClick={() => navigate('/')}
+          className="mt-2 px-6 py-3 bg-primary text-white font-bold rounded-2xl text-sm"
+        >
+          前往地圖
+        </button>
+      </div>
+    );
+  }
 
   /* ─────────────── JSX ─────────────── */
   return (
@@ -391,7 +409,7 @@ export default function ProductPage() {
               <span className="text-lg shrink-0">⚠️</span>
               <p className="text-sm text-amber-800 leading-relaxed">
                 若事後<strong>取消訂單</strong>，將扣除 <strong>15 信用積點</strong>。
-                請確保能於 <strong>{store.pickup_deadline || '截止時間'}</strong> 前到店取餐。
+                請確保能於 <strong>{store?.pickup_deadline || '截止時間'}</strong> 前到店取餐。
               </p>
             </div>
             <div className="flex gap-3">
@@ -427,7 +445,7 @@ export default function ProductPage() {
             <div className="text-xs text-gray-400 mb-0.5">訂單編號</div>
             <div className="text-sm font-mono font-bold text-gray-700 mb-4">{orderId}</div>
             <div className="bg-orange-50 rounded-xl px-4 py-2.5 text-sm text-gray-600 mb-5">
-              {store.name} · 截止 <strong>{store.pickup_deadline || '—'}</strong> 取餐
+              {store?.name} · 截止 <strong>{store?.pickup_deadline || '—'}</strong> 取餐
             </div>
             <button onClick={() => { setShowQR(false); navigate('/'); }}
               className="w-full py-3 bg-primary text-white font-bold rounded-2xl">返回地圖</button>

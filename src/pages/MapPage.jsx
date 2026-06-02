@@ -133,8 +133,14 @@ export default function MapPage() {
           ${selected ? 'translate-y-0' : 'translate-y-full'}`}
       >
         {selected && (
-          <div className="px-5 pb-6 pt-3">
-            <div className="w-10 h-1 bg-gray-200 rounded-full mx-auto mb-4" />
+          <div className="px-5 pb-6 pt-4 relative">
+            <button
+              onClick={() => setSelected(null)}
+              className="absolute top-3 right-4 w-8 h-8 flex items-center justify-center
+                rounded-full bg-gray-100 hover:bg-gray-200 text-gray-500 text-base font-bold transition-colors"
+            >
+              ✕
+            </button>
 
             {/* Store header */}
             <div className="flex items-start justify-between mb-4">

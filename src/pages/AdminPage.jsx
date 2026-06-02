@@ -206,20 +206,30 @@ function AdminDashboard({ onLogout }) {
           {data.stores.length === 0 ? (
             <div className="text-center text-gray-400 py-4 text-sm">📭 尚無已註冊的店家</div>
           ) : data.stores.map((s, i) => (
-            <div key={i} className="bg-gray-50 rounded-xl p-3 flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-orange-50 flex items-center justify-center text-xl shrink-0">
-                {TYPE_EMOJI[s.type] || '🏪'}
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="text-sm font-bold text-gray-800">{s.name}</div>
-                <div className="text-xs text-gray-400">
-                  <span className="font-mono">{s.username}</span>
-                  <span className="mx-1">·</span>
-                  <span>{s.type}</span>
+            <div key={i} className="bg-gray-50 rounded-xl p-3">
+              {/* 頂部：emoji + 名稱 + 授權標籤 */}
+              <div className="flex items-center gap-3 mb-2">
+                <div className="w-10 h-10 rounded-xl bg-orange-50 flex items-center justify-center text-xl shrink-0">
+                  {TYPE_EMOJI[s.type] || '🏪'}
                 </div>
-                <div className="text-xs text-gray-300 mt-0.5">🕐 {fmtDate(s.registeredAt)}</div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-bold text-gray-800">{s.name}</div>
+                  <div className="text-xs text-gray-500">
+                    <span className="font-mono">{s.username}</span>
+                    <span className="mx-1">·</span>
+                    <span>{s.type || '—'}</span>
+                  </div>
+                </div>
+                <span className="text-xs bg-green-100 text-green-700 font-bold px-2 py-0.5 rounded-full shrink-0">授權</span>
               </div>
-              <span className="text-xs bg-green-100 text-green-700 font-bold px-2 py-0.5 rounded-full shrink-0">授權</span>
+              {/* 詳細資料 */}
+              <div className="space-y-0.5 pl-1">
+                {s.address      && <div className="text-xs text-gray-500">📍 {s.address}</div>}
+                {s.phone        && <div className="text-xs text-gray-500">📞 {s.phone}</div>}
+                {s.businessHours && <div className="text-xs text-gray-500">🕐 {s.businessHours}</div>}
+                {s.email        && <div className="text-xs text-gray-500">✉ {s.email}</div>}
+                <div className="text-xs text-gray-300 pt-0.5">註冊：{fmtDate(s.registeredAt)}</div>
+              </div>
             </div>
           ))}
         </Accordion>
