@@ -1,5 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, NavLink, useLocation } from 'react-router-dom';
+import { collection, getDocs, query, where, updateDoc, doc, addDoc } from 'firebase/firestore';
+import { db } from './firebase';
 import MapPage from './pages/MapPage';
 import ProductPage from './pages/ProductPage';
 import CartPage from './pages/CartPage';
@@ -8,6 +10,40 @@ import LoginPage from './pages/LoginPage';
 import StoreLoginPage from './pages/StoreLoginPage';
 import StoreDashboard from './pages/StoreDashboard';
 import AdminPage from './pages/AdminPage';
+
+/* 5 間預設店家的正確座標 */
+const DEFAULT_STORES_COORDS = [
+  { username: 'sushi01', lat: 24.9578, lng: 121.2401 },
+  { username: 'drink01', lat: 24.9562, lng: 121.2389 },
+  { username: 'bread01', lat: 24.9551, lng: 121.2412 },
+  { username: 'bento01', lat: 24.9588, lng: 121.2398 },
+  { username: 'oden01',  lat: 24.9544, lng: 121.2425 },
+];
+
+/* 初始化店家座標 */
+async function initializeStores() {
+  console.log('🏪 開始初始化店家座標...');
+  try {
+    for (const store of DEFAULT_STORES_COORDS) {
+      const snap = await getDocs(query(collection(db, 'stores'), where('username', '==', store.username)));
+      if (!snap.empty) {
+        const docRef = snap.docs[0].ref;
+        const data = snap.docs[0].data();
+
+        // 檢查座標是否已正確設置
+        if (data.lat !== store.lat || data.lng !== store.lng) {
+          await updateDoc(docRef, { lat: store.lat, lng: store.lng });
+          console.log(`✅ 更新 ${data.name || store.username} 座標: ${store.lat}, ${store.lng}`);
+        } else {
+          console.log(`✓ ${data.name || store.username} 座標已正確: ${store.lat}, ${store.lng}`);
+        }
+      }
+    }
+    console.log('✅ 店家座標初始化完成');
+  } catch (err) {
+    console.error('❌ 初始化店家座標失敗:', err);
+  }
+}
 
 const NAV = [
   { to: '/',        end: true,  icon: '🗺️', label: '地圖' },
@@ -55,6 +91,11 @@ function AppContent() {
   const [storeAuth, setStoreAuth] = useState(() => {
     try { return JSON.parse(localStorage.getItem('inochi_store_auth') || 'null'); } catch { return null; }
   });
+
+  /* 應用啟動時初始化店家座標（只執行一次） */
+  useEffect(() => {
+    initializeStores();
+  }, []);
 
   /* Admin is always accessible regardless of other auth state */
   if (pathname === '/admin') return <AdminPage />;

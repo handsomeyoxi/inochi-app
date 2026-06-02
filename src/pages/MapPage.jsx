@@ -3,21 +3,11 @@ import { MapContainer, TileLayer, Marker, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { useNavigate } from 'react-router-dom';
-import { collection, onSnapshot, getDocs, query, where, addDoc, updateDoc, doc } from 'firebase/firestore';
+import { collection, onSnapshot, getDocs, query, where } from 'firebase/firestore';
 import { db } from '../firebase';
-import mockStores from '../data/mockStores';
 
 const TYPE_EMOJI = { '壽司': '🍣', '飲料': '🧋', '麵包': '🍞', '便當': '🍱', '關東煮': '🍢' };
 const FILTERS = ['全部', '壽司', '飲料', '麵包', '便當', '關東煮'];
-
-/* 5 間預設店家資料 */
-const DEFAULT_STORES = [
-  { username: 'sushi01', name: '濱海迴轉壽司', type: '壽司', address: '桃園市中壢區中北路200號附近', lat: 24.9562, lng: 121.2424, password: '12345678' },
-  { username: 'drink01', name: '小Q飲料坊', type: '飲料', address: '桃園市中壢區實踐路附近', lat: 24.9555, lng: 121.2418, password: '12345678' },
-  { username: 'bread01', name: '老師傅麵包坊', type: '麵包', address: '桃園市中壢區日新路附近', lat: 24.9548, lng: 121.2430, password: '12345678' },
-  { username: 'bento01', name: '阿嬤的便當', type: '便當', address: '桃園市中壢區中北路150號附近', lat: 24.9570, lng: 121.2415, password: '12345678' },
-  { username: 'oden01', name: '熱呼呼關東煮', type: '關東煮', address: '桃園市中壢區龍岡路附近', lat: 24.9540, lng: 121.2435, password: '12345678' },
-];
 
 const makeIcon = (isAvailable, type) =>
   L.divIcon({
@@ -48,21 +38,7 @@ export default function MapPage() {
   const [stockMap,      setStockMap]      = useState({}); // storeName → total stock
   const [selectedBox,   setSelectedBox]   = useState(null); // 選中店家的驚喜包商品
 
-  /* 初始化預設店家（若不存在） */
-  useEffect(() => {
-    (async () => {
-      try {
-        for (const defaultStore of DEFAULT_STORES) {
-          const snap = await getDocs(query(collection(db, 'stores'), where('username', '==', defaultStore.username)));
-          if (snap.empty) {
-            await addDoc(collection(db, 'stores'), defaultStore);
-          }
-        }
-      } catch { /* 初始化失敗，忽略 */ }
-    })();
-  }, []);
-
-  /* 從 Firestore 讀取店家 */
+  /* 從 Firestore 讀取所有店家（包含預設店家和新註冊店家） */
   useEffect(() => {
     (async () => {
       try {
@@ -71,13 +47,22 @@ export default function MapPage() {
           const data = d.data();
           return {
             ...data,
-            id: data.username, // 使用 username 作為 id
+            id: data.username,
             lat: data.lat ?? 24.9562,
             lng: data.lng ?? 121.2424,
           };
         });
+
+        // 🐛 調試：列印所有店家的座標
+        console.log('🗺️ 讀取地圖店家列表:');
+        storeList.forEach(s => {
+          console.log(`  📍 ${s.name} (${s.username}): ${s.lat.toFixed(4)}, ${s.lng.toFixed(4)}`);
+        });
+
         setStores(storeList);
-      } catch { /* 空列表 */ }
+      } catch (err) {
+        console.error('❌ 讀取店家失敗:', err);
+      }
     })();
   }, []);
 
@@ -178,14 +163,18 @@ export default function MapPage() {
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
         <MapClickHandler onClose={() => setSelected(null)} />
-        {filtered.map((store) => (
-          <Marker
-            key={store.id}
-            position={[store.lat, store.lng]}
-            icon={makeIcon(isStoreAvailable(store), store.type)}
-            eventHandlers={{ click: (e) => { e.originalEvent.stopPropagation(); setSelected(store); } }}
-          />
-        ))}
+        {filtered.map((store) => {
+          const isAvail = isStoreAvailable(store);
+          console.log(`🧭 繪製標記: ${store.name} (${store.lat}, ${store.lng}) - ${isAvail ? '🟢 供應中' : '🔴 已售完'}`);
+          return (
+            <Marker
+              key={store.id}
+              position={[store.lat, store.lng]}
+              icon={makeIcon(isAvail, store.type)}
+              eventHandlers={{ click: (e) => { e.originalEvent.stopPropagation(); setSelected(store); } }}
+            />
+          );
+        })}
       </MapContainer>
 
       {/* ── Bottom Sheet ── */}

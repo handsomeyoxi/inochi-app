@@ -106,6 +106,7 @@ export default function StoreLoginPage({ onLogin }) {
         lng = coords.lng;
       }
 
+      console.log(`🏪 新增店家: ${regForm.name} (${regForm.username}) - 座標: ${lat.toFixed(4)}, ${lng.toFixed(4)}`);
       await addDoc(collection(db, 'stores'), {
         name:          regForm.name,
         username:      regForm.username,
