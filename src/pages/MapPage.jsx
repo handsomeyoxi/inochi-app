@@ -55,11 +55,8 @@ export default function MapPage() {
     return () => unsub();
   }, []);
 
-  /* 判斷一間店是否有貨（優先 Firestore，fallback mockStore） */
-  const isStoreAvailable = (store) => {
-    if (Object.keys(stockMap).length === 0) return store.is_available;
-    return (stockMap[store.name] ?? 0) > 0;
-  };
+  /* 判斷一間店是否有貨（從 Firestore 即時庫存判斷） */
+  const isStoreAvailable = (store) => (stockMap[store.name] ?? 0) > 0;
 
   const filtered = useMemo(
     () =>
@@ -161,7 +158,7 @@ export default function MapPage() {
 
             {/* Price / Stock / Deadline */}
             {(() => {
-              const liveStock = boxStockMap[selected.name] ?? selected.stock_quantity ?? 0;
+              const liveStock = stockMap[selected.name] ?? 0;
               const soldOut   = liveStock === 0;
               return (
                 <div className="grid grid-cols-3 gap-2 mb-4">
