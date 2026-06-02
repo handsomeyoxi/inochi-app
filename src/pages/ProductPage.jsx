@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
-  collection, query, where, onSnapshot,
+  collection, query, where, onSnapshot, getDocs, addDoc,
 } from 'firebase/firestore';
 import { db } from '../firebase';
 
@@ -135,6 +135,24 @@ export default function ProductPage() {
   const [ordering,  setOrdering]  = useState(false);
   const [orderError, setOrderError] = useState('');
   const [addedMsg, setAddedMsg]   = useState('');
+  const [creditScore, setCreditScore] = useState(null);
+
+  /* 讀取用戶信用積分 */
+  useEffect(() => {
+    const currentUser = JSON.parse(localStorage.getItem('inochi_user') || 'null');
+    if (!currentUser?.studentId) return;
+
+    (async () => {
+      try {
+        const snap = await getDocs(query(collection(db, 'users'), where('studentId', '==', currentUser.studentId)));
+        if (!snap.empty) {
+          setCreditScore(snap.docs[0].data().creditScore ?? 100);
+        }
+      } catch (err) {
+        console.error('讀取積分失敗:', err);
+      }
+    })();
+  }, []);
 
   /* 切換 store 時重設數量 */
   useEffect(() => { setBoxQty(0); setItemQtys({}); }, [store?.name]);
@@ -167,8 +185,15 @@ export default function ProductPage() {
   }, [boxQty, boxTotal, regularProducts, itemQtys]);
 
   /* ── 加入購物車 ── */
-  const handleAddToCart = () => {
+  const handleAddToCart = async () => {
     if (total === 0) return;
+
+    /* 檢查積分是否停權 */
+    if (creditScore !== null && creditScore < 60) {
+      setOrderError('❌ 帳號已停權，無法預訂');
+      return;
+    }
+
     setOrdering(true);
 
     try {
@@ -363,13 +388,23 @@ export default function ProductPage() {
             {addedMsg}
           </div>
         )}
+        {orderError && (
+          <div className="bg-red-50 text-red-600 text-sm font-semibold rounded-xl px-3 py-2 text-center">
+            {orderError}
+          </div>
+        )}
+        {creditScore !== null && creditScore < 60 && (
+          <div className="bg-red-100 border border-red-300 text-red-700 text-xs font-bold rounded-xl px-3 py-2 text-center">
+            🚫 信用積分低於 60 分，帳號已停權
+          </div>
+        )}
         <div className="flex items-center justify-between">
           <div>
             <div className="text-xs text-gray-400">合計</div>
             <div className="text-2xl font-black text-primary">${total}</div>
           </div>
           <button onClick={handleAddToCart}
-            disabled={total === 0 || ordering || fsLoading}
+            disabled={total === 0 || ordering || fsLoading || (creditScore !== null && creditScore < 60)}
             className="bg-primary hover:bg-primary-dark active:scale-95 transition-all
               text-white font-bold px-6 py-3 rounded-2xl text-base
               disabled:opacity-30 disabled:cursor-not-allowed">

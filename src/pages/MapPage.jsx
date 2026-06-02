@@ -37,6 +37,24 @@ export default function MapPage() {
   const [stores,        setStores]        = useState([]);
   const [stockMap,      setStockMap]      = useState({}); // storeName → total stock
   const [selectedBox,   setSelectedBox]   = useState(null); // 選中店家的驚喜包商品
+  const [creditScore,   setCreditScore]   = useState(null); // 用戶信用積分
+
+  /* 讀取用戶信用積分 */
+  useEffect(() => {
+    const currentUser = JSON.parse(localStorage.getItem('inochi_user') || 'null');
+    if (!currentUser?.studentId) return;
+
+    (async () => {
+      try {
+        const snap = await getDocs(query(collection(db, 'users'), where('studentId', '==', currentUser.studentId)));
+        if (!snap.empty) {
+          setCreditScore(snap.docs[0].data().creditScore ?? 100);
+        }
+      } catch (err) {
+        console.error('讀取積分失敗:', err);
+      }
+    })();
+  }, []);
 
   /* 從 Firestore 讀取所有店家（包含預設店家和新註冊店家） */
   useEffect(() => {
@@ -252,15 +270,23 @@ export default function MapPage() {
 
             {(() => {
               const avail = isStoreAvailable(selected);
+              const suspended = creditScore !== null && creditScore < 60;
               return (
-                <button
-                  disabled={!avail}
-                  onClick={() => navigate('/products', { state: { store: selected } })}
-                  className={`w-full py-3.5 rounded-2xl font-bold text-white text-base transition-all
-                    ${avail ? 'bg-primary hover:bg-primary-dark active:scale-[0.97]' : 'bg-gray-200 text-gray-400 cursor-not-allowed'}`}
-                >
-                  {avail ? '立即預訂 →' : '已無庫存'}
-                </button>
+                <>
+                  {suspended && (
+                    <div className="bg-red-100 border border-red-300 text-red-700 text-xs font-bold rounded-xl px-3 py-2 text-center mb-3">
+                      🚫 帳號已停權，無法預訂
+                    </div>
+                  )}
+                  <button
+                    disabled={!avail || suspended}
+                    onClick={() => navigate('/products', { state: { store: selected } })}
+                    className={`w-full py-3.5 rounded-2xl font-bold text-white text-base transition-all
+                      ${(!avail || suspended) ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'bg-primary hover:bg-primary-dark active:scale-[0.97]'}`}
+                  >
+                    {suspended ? '帳號停權' : avail ? '立即預訂 →' : '已無庫存'}
+                  </button>
+                </>
               );
             })()}
           </div>

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import {
   collection, query, where, orderBy, onSnapshot,
-  addDoc, updateDoc, doc,
+  addDoc, updateDoc, doc, getDocs,
 } from 'firebase/firestore';
 import { db } from '../firebase';
 
@@ -137,10 +137,31 @@ export default function CartPage() {
   const [submitting, setSubmitting] = useState(false);
   const [confirmMsg, setConfirmMsg] = useState('');
   const [showConfirm, setShowConfirm] = useState(false);
+  const [creditScore, setCreditScore] = useState(null);
+  const [checkingScore, setCheckingScore] = useState(false);
 
   const currentUser = useMemo(() => {
     try { return JSON.parse(localStorage.getItem('inochi_user') || 'null'); } catch { return null; }
   }, []);
+
+  /* 讀取用戶信用積分 */
+  useEffect(() => {
+    if (!currentUser?.studentId) return;
+
+    setCheckingScore(true);
+    (async () => {
+      try {
+        const snap = await getDocs(query(collection(db, 'users'), where('studentId', '==', currentUser.studentId)));
+        if (!snap.empty) {
+          setCreditScore(snap.docs[0].data().creditScore ?? 100);
+        }
+      } catch (err) {
+        console.error('讀取積分失敗:', err);
+      } finally {
+        setCheckingScore(false);
+      }
+    })();
+  }, [currentUser?.studentId]);
 
   /* 讀取購物車 */
   useEffect(() => {
@@ -205,6 +226,13 @@ export default function CartPage() {
   /* 下單 */
   const handleCheckout = async () => {
     if (cartSummary.total === 0) return;
+
+    /* 再次檢查積分 */
+    if (creditScore !== null && creditScore < 60) {
+      setConfirmMsg('❌ 帳號已停權，無法下單');
+      return;
+    }
+
     setSubmitting(true);
     setConfirmMsg('');
 
@@ -328,6 +356,11 @@ export default function CartPage() {
       {/* 下單條 */}
       {cartSummary.stores.length > 0 && (
         <div className="shrink-0 bg-white border-t border-gray-100 px-4 py-3 shadow-xl">
+          {creditScore !== null && creditScore < 60 && (
+            <div className="bg-red-100 border border-red-300 text-red-700 text-xs font-bold rounded-xl px-3 py-2 text-center mb-2">
+              🚫 信用積分低於 60 分，帳號已停權，無法下單
+            </div>
+          )}
           <div className="flex items-center justify-between">
             <div>
               <div className="text-xs text-gray-400">合計</div>
@@ -335,7 +368,7 @@ export default function CartPage() {
             </div>
             <button
               onClick={() => setShowConfirm(true)}
-              disabled={submitting}
+              disabled={submitting || (creditScore !== null && creditScore < 60)}
               className="bg-primary hover:bg-primary-dark active:scale-95 transition-all
                 text-white font-bold px-6 py-3 rounded-2xl text-base
                 disabled:opacity-30 disabled:cursor-not-allowed"
