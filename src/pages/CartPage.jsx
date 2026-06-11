@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import {
   collection, query, where, orderBy, onSnapshot,
-  addDoc, updateDoc, doc, getDocs,
+  addDoc, updateDoc, doc, getDocs, getDoc,
 } from 'firebase/firestore';
 import { db } from '../firebase';
 
@@ -263,6 +263,23 @@ export default function CartPage() {
           createdAt: now.toISOString(),
           date: `${String(now.getMonth() + 1).padStart(2, '0')}/${String(now.getDate()).padStart(2, '0')}`,
         });
+
+        /* 更新對應商品的庫存（非驚喜包） */
+        for (const item of items) {
+          if (!item.isBox && item.id) {
+            try {
+              const productRef = doc(db, 'products', item.id);
+              const productDoc = await getDoc(productRef);
+              if (productDoc.exists()) {
+                const currentStock = productDoc.data().stock ?? 0;
+                const newStock = Math.max(0, currentStock - item.qty);
+                await updateDoc(productRef, { stock: newStock });
+              }
+            } catch (err) {
+              console.error(`更新商品 ${item.id} 庫存失敗:`, err);
+            }
+          }
+        }
 
         /* 寫積分日誌 */
         await addDoc(collection(db, 'points_log'), {
