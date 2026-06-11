@@ -264,9 +264,27 @@ export default function CartPage() {
           date: `${String(now.getMonth() + 1).padStart(2, '0')}/${String(now.getDate()).padStart(2, '0')}`,
         });
 
-        /* 更新對應商品的庫存（非驚喜包） */
+        /* 更新對應商品的庫存 */
         for (const item of items) {
-          if (!item.isBox && item.id) {
+          if (item.isBox) {
+            /* 驚喜包：根據店家名稱查找驚喜包商品 */
+            try {
+              const boxSnap = await getDocs(query(
+                collection(db, 'products'),
+                where('storeId', '==', storeKey),
+                where('isBox', '==', true)
+              ));
+              if (!boxSnap.empty) {
+                const boxDoc = boxSnap.docs[0];
+                const currentStock = boxDoc.data().stock ?? 0;
+                const newStock = Math.max(0, currentStock - item.qty);
+                await updateDoc(boxDoc.ref, { stock: newStock });
+              }
+            } catch (err) {
+              console.error(`更新驚喜包庫存失敗:`, err);
+            }
+          } else if (item.id) {
+            /* 一般商品 */
             try {
               const productRef = doc(db, 'products', item.id);
               const productDoc = await getDoc(productRef);
