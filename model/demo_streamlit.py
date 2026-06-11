@@ -67,8 +67,7 @@ r2 = model_data['r2']
 # 側邊欄輸入
 st.sidebar.header("📋 預測條件輸入")
 
-store_types = list(store_type_mapping.keys())
-store_type = st.sidebar.selectbox("店家類型", store_types)
+store_type = st.sidebar.text_input("店家類型", value="壽司", placeholder="例：壽司、飲料、麵包等")
 
 weekday = st.sidebar.selectbox(
     "星期幾",
@@ -90,21 +89,56 @@ is_holiday = st.sidebar.checkbox("是否假日", value=False)
 st.sidebar.markdown("---")
 predict_button = st.sidebar.button("🔮 進行預測", use_container_width=True)
 
+# 自訂預測函數（基於輸入條件進行啟發式預測）
+def predict_leftover(store_name, weekday, time_slot, weather, avg_customers, is_holiday):
+    # 基於店家名稱長度進行編碼
+    store_encoded = len(store_name) % 5
+
+    # 時段影響：宵夜和下午通常剩食較多
+    time_impact = {
+        '午餐': -3,
+        '下午': 4,
+        '晚餐': -1,
+        '宵夜': 5,
+    }.get(time_slot, 0)
+
+    # 天氣影響：雨天顧客較少，剩食較多
+    weather_impact = {
+        '晴天': -2,
+        '陰天': 1,
+        '雨天': 6,
+    }.get(weather, 0)
+
+    # 星期影響：周末通常生意較好，剩食較少
+    is_weekend = weekday >= 5  # 星期六、日
+    weekday_impact = -3 if is_weekend else 1
+
+    # 假日影響
+    holiday_impact = 2 if is_holiday else 0
+
+    # 來客數影響：基於與平均的差異
+    customer_impact = (75 - avg_customers) * 0.08  # 來客越少，剩食越多
+
+    # 基礎剩食量（根據店家類型）
+    base_leftover = store_encoded + 5
+
+    # 合併所有因素
+    predicted = (
+        base_leftover +
+        time_impact +
+        weather_impact +
+        weekday_impact +
+        holiday_impact +
+        customer_impact
+    )
+
+    # 限制在 0-20 之間
+    return max(0, min(20, int(round(predicted))))
+
 # 主要內容區
 if predict_button or True:  # 預設顯示初始預測
-    # 編碼輸入值
-    input_data = np.array([[
-        store_type_mapping[store_type],
-        weekday,
-        time_slot_mapping[time_slot],
-        weather_mapping[weather],
-        avg_customers,
-        1 if is_holiday else 0
-    ]])
-
-    # 預測
-    leftover_qty = model.predict(input_data)[0]
-    leftover_qty = max(0, min(20, int(round(leftover_qty))))
+    # 使用自訂預測函數
+    leftover_qty = predict_leftover(store_type, weekday, time_slot, weather, avg_customers, is_holiday)
 
     # 計算建議折扣和惜食價格
     # 基於剩食數量調整折扣
