@@ -141,23 +141,23 @@ if predict_button:
     leftover_qty = predict_leftover(store_type, weekday, time_slot, weather, avg_customers, is_holiday)
 
     # 計算建議折扣和惜食價格
-    # 基於剩食數量調整折扣
+    # 基於剩食數量調整折扣係數
     if leftover_qty <= 5:
-        discount = 0.7  # 70% (3折)
-        discount_desc = "3折"
+        discount = 0.7  # 折扣係數 70%
     elif leftover_qty <= 10:
-        discount = 0.65  # 65% (3.5折)
-        discount_desc = "3.5折"
+        discount = 0.65  # 折扣係數 65%
     elif leftover_qty <= 15:
-        discount = 0.5  # 50% (5折)
-        discount_desc = "5折"
+        discount = 0.5  # 折扣係數 50%
     else:
-        discount = 0.3  # 30% (7折)
-        discount_desc = "7折"
+        discount = 0.3  # 折扣係數 30%
 
     # 假設原價為 100 元
     original_price = 100
     recommended_price = int(original_price * discount)
+
+    # 折扣計算：折扣 = 惜食價 / 原價 × 10
+    discount_fold = (recommended_price / original_price) * 10
+    discount_desc = f"{discount_fold:.1f}折" if discount_fold != int(discount_fold) else f"{int(discount_fold)}折"
 
     # 使用列來分割左右
     col1, col2 = st.columns([1, 1])
