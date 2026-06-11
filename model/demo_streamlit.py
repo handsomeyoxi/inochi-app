@@ -136,7 +136,7 @@ def predict_leftover(store_name, weekday, time_slot, weather, avg_customers, is_
     return max(0, min(20, int(round(predicted))))
 
 # 主要內容區
-if predict_button or True:  # 預設顯示初始預測
+if predict_button:
     # 使用自訂預測函數
     leftover_qty = predict_leftover(store_type, weekday, time_slot, weather, avg_customers, is_holiday)
 
