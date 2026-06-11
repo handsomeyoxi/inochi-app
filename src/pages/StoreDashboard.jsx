@@ -525,10 +525,17 @@ export default function StoreDashboard({ storeAuth, onLogout }) {
         {[
           ['products', '商品管理'],
           ['orders', `今日訂單${pendingCount > 0 ? ` (${pendingCount})` : ''}`],
+          ['predict', '剩食預測'],
         ].map(([key, label]) => (
           <button
             key={key}
-            onClick={() => setTab(key)}
+            onClick={() => {
+              if (key === 'predict') {
+                window.open('https://inochi-predict.streamlit.app', '_blank');
+              } else {
+                setTab(key);
+              }
+            }}
             className={`flex-1 py-3.5 text-sm font-bold transition-colors
               ${tab === key ? 'text-primary border-b-2 border-primary' : 'text-gray-400'}`}
           >
