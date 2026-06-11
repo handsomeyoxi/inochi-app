@@ -292,6 +292,8 @@ export default function StoreDashboard({ storeAuth, onLogout }) {
   const [orders, setOrders]               = useState([]);
   const [ordersLoading, setOrdersLoading] = useState(true);
   const [showAdd, setShowAdd]             = useState(false);
+  const [boxEditing, setBoxEditing]       = useState(false);
+  const [boxDraft, setBoxDraft]           = useState({ originalPrice: '', specialPrice: '', stock: '' });
   const [confirmInput, setConfirmInput]   = useState('');
   const [confirmMsg, setConfirmMsg]       = useState({ type: '', text: '' });
   const [confirming, setConfirming]       = useState(false);
@@ -491,6 +493,39 @@ export default function StoreDashboard({ storeAuth, onLogout }) {
     setShowAdd(false);
   };
 
+  /* ── 驚喜包 ── */
+  const boxProduct = products.find(p => p.isBox);
+
+  const handleBoxSaveOrCreate = async () => {
+    if (!boxDraft.originalPrice || !boxDraft.specialPrice || boxDraft.stock === '') return;
+
+    if (boxProduct?._docId) {
+      await updateDoc(doc(db, 'products', boxProduct._docId), {
+        originalPrice: Number(boxDraft.originalPrice),
+        specialPrice: Number(boxDraft.specialPrice),
+        stock: Math.max(0, Number(boxDraft.stock)),
+      });
+    } else {
+      await addDoc(collection(db, 'products'), {
+        storeId: storeAuth.name,
+        name: '🎁 驚喜包',
+        originalPrice: Number(boxDraft.originalPrice),
+        specialPrice: Number(boxDraft.specialPrice),
+        stock: Math.max(0, Number(boxDraft.stock)),
+        available: true,
+        isBox: true,
+      });
+    }
+    setBoxEditing(false);
+  };
+
+  const handleBoxToggle = async () => {
+    if (!boxProduct?._docId) return;
+    await updateDoc(doc(db, 'products', boxProduct._docId), {
+      available: !boxProduct.available,
+    });
+  };
+
   const today = new Date().toISOString().slice(0, 10);
   const todayOrders  = orders.filter((o) => o.createdAt?.startsWith(today));
   const pendingCount = todayOrders.filter((o) => o.status === '待取餐').length;
@@ -550,11 +585,71 @@ export default function StoreDashboard({ storeAuth, onLogout }) {
         {/* Products tab */}
         {tab === 'products' && (
           <>
+            {/* 驚喜包設定區塊 */}
+            <div className="bg-yellow-50 border border-yellow-200 rounded-2xl p-4">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-sm font-bold text-yellow-900">🎁 驚喜包設定</h3>
+                <Toggle
+                  checked={boxProduct?.available ?? false}
+                  onChange={handleBoxToggle}
+                />
+              </div>
+
+              {!boxEditing ? (
+                <div>
+                  {boxProduct ? (
+                    <div className="space-y-1.5 mb-3 text-sm text-yellow-800">
+                      <div>原價: <span className="font-bold">${boxProduct.originalPrice}</span></div>
+                      <div>惜食價: <span className="font-bold text-primary">${boxProduct.specialPrice}</span></div>
+                      <div>庫存: <span className="font-bold">{boxProduct.stock} 份</span></div>
+                    </div>
+                  ) : (
+                    <div className="text-sm text-yellow-700 mb-3">尚未設定驚喜包</div>
+                  )}
+                  <button
+                    onClick={() => {
+                      setBoxDraft({
+                        originalPrice: boxProduct?.originalPrice ?? '',
+                        specialPrice: boxProduct?.specialPrice ?? '',
+                        stock: boxProduct?.stock ?? '',
+                      });
+                      setBoxEditing(true);
+                    }}
+                    className="w-full py-2 bg-yellow-500 hover:bg-yellow-600 text-white text-xs font-bold rounded-xl transition-colors"
+                  >
+                    編輯
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-2 mb-3">
+                  {[
+                    { k: 'originalPrice', label: '原價', type: 'number' },
+                    { k: 'specialPrice', label: '惜食價', type: 'number' },
+                    { k: 'stock', label: '庫存', type: 'number' },
+                  ].map(({ k, label, type }) => (
+                    <div key={k} className="flex items-center gap-2">
+                      <label className="text-xs text-yellow-700 w-12 shrink-0">{label}</label>
+                      <input
+                        type={type}
+                        value={boxDraft[k]}
+                        onChange={(e) => setBoxDraft({ ...boxDraft, [k]: e.target.value })}
+                        className="flex-1 border border-yellow-200 rounded-lg px-2.5 py-1.5 text-sm outline-none focus:border-yellow-500 bg-white"
+                      />
+                    </div>
+                  ))}
+                  <div className="flex gap-2 pt-1">
+                    <button onClick={() => setBoxEditing(false)} className="flex-1 py-2 border border-yellow-200 text-yellow-700 text-xs font-semibold rounded-xl">取消</button>
+                    <button onClick={handleBoxSaveOrCreate} className="flex-1 py-2 bg-yellow-500 text-white text-xs font-bold rounded-xl">儲存</button>
+                  </div>
+                </div>
+              )}
+            </div>
+
             {productsLoading && <div className="text-center text-gray-400 py-10 text-sm">載入商品中…</div>}
-            {!productsLoading && products.length === 0 && !showAdd && (
-              <div className="text-center text-gray-400 py-10 text-sm">尚無商品，點下方新增</div>
+            {!productsLoading && products.filter(p => !p.isBox).length === 0 && !showAdd && (
+              <div className="text-center text-gray-400 py-10 text-sm">尚無一般商品，點下方新增</div>
             )}
-            {products.map((p) => (
+            {products.filter(p => !p.isBox).map((p) => (
               <ProductCard
                 key={p._docId}
                 product={p}

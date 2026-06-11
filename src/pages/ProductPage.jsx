@@ -298,6 +298,7 @@ export default function ProductPage() {
         ) : (
           <>
             {/* 驚喜包 */}
+            {store?.name !== '小Q飲料坊' && (
             <div className="m-4">
               <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">惜食驚喜包</p>
               <div className="bg-gradient-to-br from-orange-400 via-amber-400 to-yellow-400 rounded-3xl p-5 shadow-lg">
@@ -332,6 +333,7 @@ export default function ProductPage() {
                 </div>
               </div>
             </div>
+            )}
 
             {/* 一般商品 */}
             <div className="mx-4 mb-4">
