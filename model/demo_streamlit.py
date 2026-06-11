@@ -67,7 +67,7 @@ r2 = model_data['r2']
 # 側邊欄輸入
 st.sidebar.header("📋 預測條件輸入")
 
-store_type = st.sidebar.text_input("店家類型", value="壽司", placeholder="例：壽司、飲料、麵包等")
+store_type = st.sidebar.text_input("店家類型", value="", placeholder="請輸入店家類型，例如：麵包店、壽司店")
 
 weekday = st.sidebar.selectbox(
     "星期幾",
